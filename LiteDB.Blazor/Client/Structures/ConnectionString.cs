@@ -14,11 +14,6 @@ namespace LiteDB
         private readonly Dictionary<string, string> _values;
 
         /// <summary>
-        /// "connection": Return how engine will be open (default: Direct)
-        /// </summary>
-        public ConnectionType Connection { get; set; } = ConnectionType.Direct;
-
-        /// <summary>
         /// "filename": Full path or relative path from DLL directory
         /// </summary>
         public string Filename { get; set; } = "";
@@ -75,7 +70,6 @@ namespace LiteDB
             }
 
             // setting values to properties
-            this.Connection = _values.GetValue("connection", this.Connection);
             this.Filename = _values.GetValue("filename", this.Filename).Trim();
 
             this.Password = _values.GetValue("password", this.Password);
@@ -113,18 +107,7 @@ namespace LiteDB
             };
 
             // create engine implementation as Connection Type
-            if (this.Connection == ConnectionType.Direct)
-            {
-                return new LiteEngine(settings);
-            }
-            else if (this.Connection == ConnectionType.Shared)
-            {
-                return new SharedEngine(settings);
-            }
-            else
-            {
-                throw new NotImplementedException();
-            }
+            return new LiteEngine(settings);
         }
     }
 }

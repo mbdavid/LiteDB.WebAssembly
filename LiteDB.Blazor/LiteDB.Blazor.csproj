@@ -1,13 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0</TargetFrameworks>
+    <TargetFrameworks>net5.0</TargetFrameworks>
     <AssemblyVersion>5.1.0</AssemblyVersion>
     <FileVersion>5.1.0</FileVersion>
     <VersionPrefix>5.1.0</VersionPrefix>
     <Authors>Maurício David</Authors>
     <Product>LiteDB.Blazor</Product>
-    <Description>LiteDB for Blazor.NET - A smaller and focused LiteDB for Blazor</Description>
+    <Description>LiteDB for Blazor WebAssembly - A smaller and focused LiteDB for Blazor Wasm</Description>
     <Copyright>MIT</Copyright>
     <NeutralLanguage>en-US</NeutralLanguage>
     <Title>LiteDB.Blazor</Title>
@@ -39,16 +39,9 @@
     <None Include="..\LICENSE" Pack="true" PackagePath="" />
     <None Include="..\icon_64x64.png" Pack="true" PackagePath="\" />
   </ItemGroup>
-
-  <ItemGroup Condition="'$(TargetFramework)' == 'net45'">
-    <Reference Include="System" />
-    <Reference Include="System.Runtime" />
-  </ItemGroup>
-
   <ItemGroup>
-    <Folder Include="Utils\Xts\" />
+    <PackageReference Include="Microsoft.JSInterop" Version="5.0.2" />
   </ItemGroup>
-  
   <!-- End References -->
 
 </Project>

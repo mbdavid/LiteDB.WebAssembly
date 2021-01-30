@@ -76,8 +76,12 @@ namespace LiteDB.Engine
         /// </summary>
         internal IStreamFactory CreateTempFactory()
         {
-            if (this.DataStream is MemoryStream || this.Filename == ":memory:" || this.ReadOnly)
+            if (this.DataStream is MemoryStream || 
+                this.DataStream is LocalStorageStream ||
+                this.Filename == ":memory:" || 
+                this.ReadOnly)
             {
+                // use in-memory only temp file
                 return new StreamFactory(new MemoryStream(), null);
             }
             else if (this.Filename == ":temp:")
