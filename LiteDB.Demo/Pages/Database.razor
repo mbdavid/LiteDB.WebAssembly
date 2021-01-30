@@ -1,0 +1,69 @@
+﻿@page "/database"
+
+<h1>LiteDB for Blazor WebAssembly</h1>
+
+<button class="btn btn-primary" disabled="@(_db != null)" @onclick="OpenDatabase">Open Database</button>
+<button class="btn btn-primary" disabled="@(_db == null)" @onclick="CloseDatabase">Close Database</button>
+<button class="btn btn-primary" disabled="@(_db == null)" @onclick="InsertPerson">Insert [Person]</button>
+<button class="btn btn-primary" disabled="@(_db == null)" @onclick="CountCollection">Count [Person]</button>
+
+<pre class="log">@_log.ToString()</pre>
+
+@code {
+
+    private readonly System.Text.StringBuilder _log = new System.Text.StringBuilder();
+    private readonly Random _rnd = new Random();
+
+    private LiteDB.LiteDatabase _db = null;
+
+    public class Person
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public int Age { get; set; }
+        public override string ToString() => $"{{ Id: {Id}, Name: {Name}, Age: {Age} }}";
+    }
+
+    private void OpenDatabase()
+    {
+        if (_db != null) this.CloseDatabase();
+
+        _db = new LiteDatabase(":memory:");
+        _log.AppendLine("database opened");
+    }
+
+    private void CloseDatabase()
+    {
+        if (_db == null) return;
+
+        _db.Dispose();
+        _db = null;
+
+        _log.AppendLine("database closed");
+    }
+
+    private void InsertPerson()
+    {
+        if (_db == null) return;
+
+        var person = new Person { Name = "John Doe " + Guid.NewGuid(), Age = _rnd.Next(10, 90) };
+
+        var collection = _db.GetCollection<Person>("person");
+
+        collection.Insert(person);
+
+        _log.AppendLine($"inserted new person: {person}");
+
+    }
+
+    private void CountCollection()
+    {
+        if (_db == null) return;
+
+        var collection = _db.GetCollection<Person>("person");
+
+        var count = collection.Count();
+
+        _log.AppendLine($"person counter: ${count}");
+    }
+}
