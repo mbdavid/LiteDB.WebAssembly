@@ -1,0 +1,54 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0</TargetFrameworks>
+    <AssemblyVersion>5.1.0</AssemblyVersion>
+    <FileVersion>5.1.0</FileVersion>
+    <VersionPrefix>5.1.0</VersionPrefix>
+    <Authors>Maurício David</Authors>
+    <Product>LiteDB.Blazor</Product>
+    <Description>LiteDB for Blazor.NET - A smaller and focused LiteDB for Blazor</Description>
+    <Copyright>MIT</Copyright>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <Title>LiteDB.Blazor</Title>
+    <PackageId>LiteDB.Blazor</PackageId>
+    <PackageVersion>5.1.0</PackageVersion>
+    <PackageTags>database nosql embedded</PackageTags>
+    <PackageIcon>icon_64x64.png</PackageIcon>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageProjectUrl>https://www.litedb.org</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mbdavid/LiteDB.Blazor</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <RootNamespace>LiteDB</RootNamespace>
+    <AssemblyName>LiteDB.Blazor</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NetStandardImplicitPackageVersion Condition=" '$(TargetFramework)' == 'netstandard1.3' ">1.6.1</NetStandardImplicitPackageVersion>
+    <NoWarn>1701;1702;1705;1591;0618</NoWarn>
+    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\LiteDB.xml</DocumentationFile>
+    <SignAssembly Condition="'$(OS)'=='Windows_NT'">true</SignAssembly>
+    <AssemblyOriginatorKeyFile Condition="'$(Configuration)' == 'Release'">LiteDB.snk</AssemblyOriginatorKeyFile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
+    <DefineConstants>TRACE;DEBUG</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Begin References -->
+  <ItemGroup>
+    <None Include="..\LICENSE" Pack="true" PackagePath="" />
+    <None Include="..\icon_64x64.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net45'">
+    <Reference Include="System" />
+    <Reference Include="System.Runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Utils\Xts\" />
+  </ItemGroup>
+  
+  <!-- End References -->
+
+</Project>
