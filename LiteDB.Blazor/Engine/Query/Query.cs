@@ -12,6 +12,16 @@ namespace LiteDB
     /// </summary>
     public partial class Query
     {
+        /// <summary>
+        /// Indicate when a query must execute in ascending order
+        /// </summary>
+        public const int Ascending = 1;
+
+        /// <summary>
+        /// Indicate when a query must execute in descending order
+        /// </summary>
+        public const int Descending = -1;
+
         public BsonExpression Select { get; set; } = BsonExpression.Root;
 
         public List<BsonExpression> Includes { get; } = new List<BsonExpression>();

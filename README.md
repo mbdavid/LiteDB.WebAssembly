@@ -11,8 +11,9 @@ Blazor runs in browser using WebAssembly. There is no disk access in browsers so
 All methods will be converted into Async and will be added a "Async" sufix
 
 #### Removed features
+- Encryption
+- Transactions?
 - Concurrency
 - Shared Connection
-- LiteRepository
 - FileStorage
-- AES
+- MemoryCache

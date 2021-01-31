@@ -12,16 +12,6 @@ namespace LiteDB
     public partial class Query
     {
         /// <summary>
-        /// Indicate when a query must execute in ascending order
-        /// </summary>
-        public const int Ascending = 1;
-
-        /// <summary>
-        /// Indicate when a query must execute in descending order
-        /// </summary>
-        public const int Descending = -1;
-
-        /// <summary>
         /// Returns all documents
         /// </summary>
         public static Query All()

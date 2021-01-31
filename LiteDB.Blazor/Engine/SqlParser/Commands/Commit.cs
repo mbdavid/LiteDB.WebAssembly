@@ -4,7 +4,7 @@ using System.Linq;
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
-namespace LiteDB
+namespace LiteDB.Engine
 {
     internal partial class SqlParser
     {

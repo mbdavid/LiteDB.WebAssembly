@@ -43,17 +43,14 @@ namespace LiteDB
 
         public override long Seek(long offset, SeekOrigin origin)
         {
-            lock (_runtime)
-            {
-                var position =
-                    origin == SeekOrigin.Begin ? offset :
-                    origin == SeekOrigin.Current ? _position + offset :
-                    _position - offset;
+            var position =
+                origin == SeekOrigin.Begin ? offset :
+                origin == SeekOrigin.Current ? _position + offset :
+                _position - offset;
 
-                _position = position;
+            _position = position;
 
-                return _position;
-            }
+            return _position;
         }
 
         public override void SetLength(long value)

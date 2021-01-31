@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -18,17 +20,17 @@ namespace LiteDB.Engine
     {
         #region Services instances
 
-        private readonly LockService _locker;
+        private LockService _locker;
 
-        private readonly DiskService _disk;
+        private DiskService _disk;
 
-        private readonly WalIndexService _walIndex;
+        private WalIndexService _walIndex;
 
-        private readonly HeaderPage _header;
+        private HeaderPage _header;
 
-        private readonly TransactionMonitor _monitor;
+        private TransactionMonitor _monitor;
 
-        private readonly SortDisk _sortDisk;
+        private SortDisk _sortDisk;
 
         // immutable settings
         private readonly EngineSettings _settings;
@@ -40,7 +42,7 @@ namespace LiteDB.Engine
         #region Ctor
 
         /// <summary>
-        /// Initialize LiteEngine using connection memory database
+        /// Create new LiteEngine using in-memory database
         /// </summary>
         public LiteEngine()
             : this(new EngineSettings { DataStream = new MemoryStream() })
@@ -48,7 +50,7 @@ namespace LiteDB.Engine
         }
 
         /// <summary>
-        /// Initialize LiteEngine using connection string using key=value; parser
+        /// Create new LiteEngine using datafile filename
         /// </summary>
         public LiteEngine(string filename)
             : this (new EngineSettings { Filename = filename })
@@ -56,24 +58,30 @@ namespace LiteDB.Engine
         }
 
         /// <summary>
-        /// Initialize LiteEngine using initial engine settings
+        /// Use full engine settings to create new LiteEngine instance
         /// </summary>
         public LiteEngine(EngineSettings settings)
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        }
 
+        /// <summary>
+        /// Initialize database
+        /// </summary>
+        public async Task OpenAsync()
+        { 
             LOG($"start initializing{(_settings.ReadOnly ? " (readonly)" : "")}", "ENGINE");
 
             try
             {
                 // initialize disk service (will create database if needed)
-                _disk = new DiskService(settings, MEMORY_SEGMENT_SIZES);
+                _disk = new DiskService(_settings, MEMORY_SEGMENT_SIZES);
 
                 // get header page from disk service
                 _header = _disk.Header;
                 
                 // test for same collation
-                if (settings.Collation != null && settings.Collation.ToString() != _header.Pragmas.Collation.ToString())
+                if (_settings.Collation != null && _settings.Collation.ToString() != _header.Pragmas.Collation.ToString())
                 {
                     throw new LiteException(0, $"Datafile collation '{_header.Pragmas.Collation}' is different from engine settings. Use Rebuild database to change collation.");
                 }
@@ -88,7 +96,7 @@ namespace LiteDB.Engine
                 _walIndex.RestoreIndex(_header);
 
                 // initialize sort temp disk
-                _sortDisk = new SortDisk(settings.CreateTempFactory(), CONTAINER_SORT_SIZE, _header.Pragmas);
+                _sortDisk = new SortDisk(_settings.CreateTempFactory(), CONTAINER_SORT_SIZE, _header.Pragmas);
 
                 // initialize transaction monitor as last service
                 _monitor = new TransactionMonitor(_header, _settings, _locker, _disk, _walIndex);

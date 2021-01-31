@@ -5,7 +5,7 @@ using System.Linq;
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
-namespace LiteDB
+namespace LiteDB.Engine
 {
     /// <summary>
     /// Internal class to parse and execute sql-like commands
