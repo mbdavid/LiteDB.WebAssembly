@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -31,33 +33,35 @@ namespace LiteDB.Engine
         }
 
         /// <summary>
-        /// Get collection page instance (or create a new one)
+        /// Get collection page instance (or create a new one). Returns null if not found and not created
         /// </summary>
-        public void Get(string name, bool addIfNotExists, ref CollectionPage collectionPage)
+        public async Task<CollectionPage> Get(string name, bool addIfNotExists)
         {
             // get collection pageID from header
             var pageID = _header.GetCollectionPageID(name);
 
             if (pageID != uint.MaxValue)
             {
-                collectionPage = _snapshot.GetPage<CollectionPage>(pageID);
+                return await _snapshot.GetPage<CollectionPage>(pageID);
             }
             else if (addIfNotExists)
             {
-                this.Add(name, ref collectionPage);
+                return await this.Add(name);
             }
+
+            return null;
         }
 
         /// <summary>
         /// Add a new collection. Check if name the not exists. Create only in transaction page - will update header only in commit
         /// </summary>
-        private void Add(string name, ref CollectionPage collectionPage)
+        private async Task<CollectionPage> Add(string name)
         {
             // checks for collection name/size
             CheckName(name, _header);
 
             // create new collection page
-            collectionPage = _snapshot.NewPage<CollectionPage>();
+            var collectionPage = await _snapshot.NewPage<CollectionPage>();
             var pageID = collectionPage.PageID;
 
             // insert collection name/pageID in header only in commit operation
@@ -67,6 +71,8 @@ namespace LiteDB.Engine
             var indexer = new IndexService(_snapshot, _header.Pragmas.Collation);
 
             indexer.CreateIndex("_id", "$._id", true);
+
+            return collectionPage;
         }
     }
 }

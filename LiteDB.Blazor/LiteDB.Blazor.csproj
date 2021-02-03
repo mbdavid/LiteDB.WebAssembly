@@ -49,6 +49,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.JSInterop" Version="5.0.2" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Engine\Disk\Serializer\Sync\" />
+  </ItemGroup>
   <!-- End References -->
 
 </Project>

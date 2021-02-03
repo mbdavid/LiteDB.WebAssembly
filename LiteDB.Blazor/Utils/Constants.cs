@@ -67,23 +67,23 @@ namespace LiteDB
         public const int MAX_DOCUMENT_SIZE = 2047 * DataService.MAX_DATA_BYTES_PER_PAGE;
 
         /// <summary>
-        /// Define how many transactions can be open simultaneously
-        /// </summary>
-        public const int MAX_OPEN_TRANSACTIONS = 100;
-
-        /// <summary>
-        /// Define how many pages all transaction will consume, in memory, before persist in disk. This amount are shared across all open transactions
-        /// 100,000 ~= 1Gb memory
-        /// </summary>
-        public const int MAX_TRANSACTION_SIZE = 100_000; // 100_000 (default) - 1000 (for tests)
-
-        /// <summary>
         /// Size, in PAGES, for each buffer array (used in MemoryStore)
         /// It's an array to increase after each extend - limited in highest value
         /// Each byte array will be created with this size * PAGE_SIZE
         /// Use minimal 12 to allocate at least 85Kb per segment (will use LOH)
         /// </summary>
         public static int[] MEMORY_SEGMENT_SIZES = new int[] { 12, 50, 100, 500, 1000 }; // 8Mb per extend
+
+        /// <summary>
+        /// Max cache memory allocation
+        /// </summary>
+        public static int MAX_EXTENDS = 100; // ~ 780 mb max
+
+        /// <summary>
+        /// Define how many pages all transaction will consume, in memory, before persist in disk. This amount are shared across all open transactions
+        /// 10,0000 ~= 100Mb memory
+        /// </summary>
+        public const int MAX_TRANSACTION_SIZE = 10_000; // 10_000 (default) - 1000 (for tests)
 
         /// <summary>
         /// Define how many documents will be keep in memory until clear cache and remove support to orderby/groupby

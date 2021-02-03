@@ -22,7 +22,7 @@ namespace LiteDB.Engine
                 _tokenizer.ReadToken().Expect(TokenType.EOF, TokenType.SemiColon);
             }
 
-            var transactionId = _engine.BeginTrans();
+            var transactionId = _engine.BeginTransAsync();
 
             return new BsonDataReader(transactionId);
         }

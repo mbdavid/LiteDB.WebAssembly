@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -12,16 +14,18 @@ namespace LiteDB.Engine
         /// <summary>
         /// Sequence cache for collections last ID (for int/long numbers only)
         /// </summary>
-        private ConcurrentDictionary<string, long> _sequences = new ConcurrentDictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, long> _sequences = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Get lastest value from a _id collection and plus 1 - use _sequence cache
         /// </summary>
-        private BsonValue GetSequence(Snapshot snapshot, BsonAutoId autoId)
+        private async Task<BsonValue> GetSequence(Snapshot snapshot, BsonAutoId autoId)
         {
-            var next = _sequences.AddOrUpdate(snapshot.CollectionName, (s) =>
+            var found = _sequences.TryGetValue(snapshot.CollectionName, out var next);
+
+            if (found == false)
             {
-                var lastId = this.GetLastId(snapshot);
+                var lastId = await this.GetLastId(snapshot);
 
                 // emtpy collection, return 1
                 if (lastId.IsMinValue) return 1;
@@ -33,13 +37,12 @@ namespace LiteDB.Engine
                 }
 
                 // return nextId
-                return lastId.AsInt64 + 1;
-            },
-            (s, value) =>
+                next = lastId.AsInt64 + 1;
+            }
+            else
             {
-                // update last value
-                return value + 1;
-            });
+                next++;
+            }
 
             return autoId == BsonAutoId.Int32 ?
                 new BsonValue((int)next) :
@@ -50,40 +53,42 @@ namespace LiteDB.Engine
         /// Update sequence number with new _id passed by user, IF this number are higher than current last _id
         /// At this point, newId.Type is Number
         /// </summary>
-        private void SetSequence(Snapshot snapshot, BsonValue newId)
+        private async Task SetSequence(Snapshot snapshot, BsonValue newId)
         {
-            _sequences.AddOrUpdate(snapshot.CollectionName, (s) =>
+            var found = _sequences.TryGetValue(snapshot.CollectionName, out var value);
+
+            if (found == false)
             {
-                var lastId = this.GetLastId(snapshot);
+                var lastId = await this.GetLastId(snapshot);
 
                 // create new collection based with max value between last _id index key or new passed _id
                 if (lastId.IsNumber)
                 {
-                    return Math.Max(lastId.AsInt64, newId.AsInt64);
+                    _sequences[snapshot.CollectionName] = Math.Max(lastId.AsInt64, newId.AsInt64);
                 }
                 else
                 {
                     // if collection last _id is not an number (is empty collection or contains another data type _id)
                     // use newId
-                    return newId.AsInt64;
+                    _sequences[snapshot.CollectionName] = newId.AsInt64;
                 }
-
-            }, (s, value) =>
+            }
+            else
             {
-                // return max value between current sequence value vs new inserted value
-                return Math.Max(value, newId.AsInt64);
-            });
+                _sequences[snapshot.CollectionName] = Math.Max(value, newId.AsInt64);
+            }
+            
         }
 
         /// <summary>
         /// Get last _id index key from collection. Returns MinValue if collection are empty
         /// </summary>
-        private BsonValue GetLastId(Snapshot snapshot)
+        private async Task<BsonValue> GetLastId(Snapshot snapshot)
         {
             var pk = snapshot.CollectionPage.PK;
 
             // get tail page and previous page
-            var tailPage = snapshot.GetPage<IndexPage>(pk.Tail.PageID);
+            var tailPage = await snapshot.GetPage<IndexPage>(pk.Tail.PageID);
             var node = tailPage.GetIndexNode(pk.Tail.Index);
             var prevNode = node.Prev[0];
 
@@ -93,7 +98,7 @@ namespace LiteDB.Engine
             }
             else
             {
-                var lastPage = prevNode.PageID == tailPage.PageID ? tailPage : snapshot.GetPage<IndexPage>(prevNode.PageID);
+                var lastPage = prevNode.PageID == tailPage.PageID ? tailPage : await snapshot.GetPage<IndexPage>(prevNode.PageID);
                 var lastNode = lastPage.GetIndexNode(prevNode.Index);
 
                 var lastKey = lastNode.Key;

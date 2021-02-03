@@ -28,49 +28,40 @@ namespace LiteDB.Engine
         public long Position;
 
         /// <summary>
-        /// Get/Set how many read-share threads are using this page. -1 means 1 thread are using as writable
-        /// </summary>
-        public int ShareCounter;
-
-        /// <summary>
         /// Get/Set timestamp from last request
         /// </summary>
         public long Timestamp;
+
+        /// <summary>
+        /// Get/Set if page is writable
+        /// </summary>
+        public bool IsWritable;
 
         public PageBuffer(byte[] buffer, int offset, int uniqueID)
             : base(buffer, offset, PAGE_SIZE)
         {
             this.UniqueID = uniqueID;
             this.Position = long.MaxValue;
-            this.ShareCounter = 0;
             this.Timestamp = 0;
+            this.IsWritable = false;
         }
 
-        /// <summary>
-        /// Release this page - decrement ShareCounter
-        /// </summary>
-        public void Release()
-        {
-            ENSURE(this.ShareCounter > 0, "share counter must be > 0 in Release()");
-
-            Interlocked.Decrement(ref this.ShareCounter);
-        }
 
 #if DEBUG
         ~PageBuffer()
         {
-            ENSURE(this.ShareCounter == 0, $"share count must be 0 in destroy PageBuffer (current: {this.ShareCounter})");
+            ENSURE(this.IsWritable == false, $"page must be writable = false before destroy");
         }
 #endif
 
         public override string ToString()
         {
             var p = this.Position == long.MaxValue ? "<empty>" : this.Position.ToString();
-            var s = this.ShareCounter == BUFFER_WRITABLE ? "<writable>" : this.ShareCounter.ToString();
+            var w = this.IsWritable ? "W" : "R";
             var pageID = this.ReadUInt32(0);
             var pageType = this[4];
 
-            return $"ID: {this.UniqueID} - Position: {p} - Shared: {s} - ({base.ToString()}) :: Content: [{pageID.ToString("0:0000")}/{(PageType)pageType}]";
+            return $"ID: {this.UniqueID} - Position: {p} {w} - ({base.ToString()}) :: Content: [{pageID.ToString("0:0000")}/{(PageType)pageType}]";
         }
     }
 }

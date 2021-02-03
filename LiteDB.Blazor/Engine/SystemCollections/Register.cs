@@ -20,13 +20,12 @@ namespace LiteDB.Engine
 
             this.RegisterSystemCollection("$sequences", () => this.SysSequences());
 
-            this.RegisterSystemCollection("$transactions", () => this.SysTransactions());
             this.RegisterSystemCollection("$snapshots", () => this.SysSnapshots());
             this.RegisterSystemCollection("$open_cursors", () => this.SysOpenCursors());
 
             this.RegisterSystemCollection(new SysFile()); // use single $file(?) for all file formats
-            this.RegisterSystemCollection(new SysDump(_header, _monitor, _disk));
-            this.RegisterSystemCollection(new SysPageList(_header, _monitor));
+            this.RegisterSystemCollection(new SysDump(_header, _disk));
+            this.RegisterSystemCollection(new SysPageList(_header));
 
             this.RegisterSystemCollection(new SysQuery(this));
         }

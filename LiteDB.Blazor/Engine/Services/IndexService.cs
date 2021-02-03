@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -28,13 +30,13 @@ namespace LiteDB.Engine
         /// <summary>
         /// Create a new index and returns head page address (skip list)
         /// </summary>
-        public CollectionIndex CreateIndex(string name, string expr, bool unique)
+        public async Task<CollectionIndex> CreateIndex(string name, string expr, bool unique)
         {
             // get how many butes needed fore each head/tail (both has same size)
             var bytesLength = IndexNode.GetNodeLength(MAX_LEVEL_LENGTH, BsonValue.MinValue, out var keyLength);
 
             // get a new empty page (each index contains your own linked nodes)
-            var indexPage = _snapshot.NewPage<IndexPage>();
+            var indexPage = await _snapshot.NewPage<IndexPage>();
 
             // create index ref
             var index = _snapshot.CollectionPage.InsertCollectionIndex(name, expr, unique);
@@ -60,7 +62,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Insert a new node index inside an collection index. Flip coin to know level
         /// </summary>
-        public IndexNode AddNode(CollectionIndex index, BsonValue key, PageAddress dataBlock, IndexNode last)
+        public async Task<IndexNode> AddNode(CollectionIndex index, BsonValue key, PageAddress dataBlock, IndexNode last)
         {
             // do not accept Min/Max value as index key (only head/tail can have this value)
             if (key.IsMaxValue || key.IsMinValue)
@@ -79,13 +81,13 @@ namespace LiteDB.Engine
             }
 
             // call AddNode with key value
-            return this.AddNode(index, key, dataBlock, level, last);
+            return await this.AddNode(index, key, dataBlock, level, last);
         }
 
         /// <summary>
         /// Insert a new node index inside an collection index.
         /// </summary>
-        private IndexNode AddNode(CollectionIndex index, BsonValue key, PageAddress dataBlock, byte level, IndexNode last)
+        private async Task<IndexNode> AddNode(CollectionIndex index, BsonValue key, PageAddress dataBlock, byte level, IndexNode last)
         {
             // get a free index page for head note
             var bytesLength = IndexNode.GetNodeLength(level, key, out var keyLength);
@@ -93,13 +95,16 @@ namespace LiteDB.Engine
             // test for index key maxlength
             if (keyLength > MAX_INDEX_KEY_LENGTH) throw LiteException.InvalidIndexKey($"Index key must be less than {MAX_INDEX_KEY_LENGTH} bytes.");
 
-            var indexPage = _snapshot.GetFreeIndexPage(bytesLength, ref index.FreeIndexPageList);
+            var freePage = await _snapshot.GetFreeIndexPage(bytesLength, index.FreeIndexPageList);
+
+            // update free index page
+            index.FreeIndexPageList = freePage.freeIndexPageList;
 
             // create node in buffer
-            var node = indexPage.InsertIndexNode(index.Slot, level, key, dataBlock, bytesLength);
+            var node = freePage.indexPage.InsertIndexNode(index.Slot, level, key, dataBlock, bytesLength);
 
             // now, let's link my index node on right place
-            var cur = this.GetNode(index.Head);
+            var cur = await this.GetNode(index.Head);
 
             // using as cache last
             IndexNode cache = null;
@@ -108,13 +113,13 @@ namespace LiteDB.Engine
             for (int i = index.MaxLevel - 1; i >= 0; i--)
             {
                 // get cache for last node
-                cache = cache != null && cache.Position == cur.Next[i] ? cache : this.GetNode(cur.Next[i]);
+                cache = cache != null && cache.Position == cur.Next[i] ? cache : await this.GetNode(cur.Next[i]);
 
                 // for(; <while_not_this>; <do_this>) { ... }
                 for (; cur.Next[i].IsEmpty == false; cur = cache)
                 {
                     // get cache for last node
-                    cache = cache != null && cache.Position == cur.Next[i] ? cache : this.GetNode(cur.Next[i]);
+                    cache = cache != null && cache.Position == cur.Next[i] ? cache : await this.GetNode(cur.Next[i]);
 
                     // read next node to compare
                     var diff = cache.Key.CompareTo(key, _collation);
@@ -135,7 +140,7 @@ namespace LiteDB.Engine
                     node.SetPrev((byte)i, cur.Position);
                     cur.SetNext((byte)i, node.Position);
 
-                    var next = this.GetNode(node.Next[i]);
+                    var next = await this.GetNode(node.Next[i]);
 
                     if (next != null)
                     {
@@ -153,7 +158,7 @@ namespace LiteDB.Engine
             }
 
             // fix page position in free list slot
-            _snapshot.AddOrRemoveFreeIndexList(node.Page, ref index.FreeIndexPageList);
+            index.FreeIndexPageList = await _snapshot.AddOrRemoveFreeIndexList(node.Page, index.FreeIndexPageList);
 
             return node;
         }
@@ -178,11 +183,11 @@ namespace LiteDB.Engine
         /// <summary>
         /// Get a node inside a page using PageAddress - Returns null if address IsEmpty
         /// </summary>
-        public IndexNode GetNode(PageAddress address)
+        public async Task<IndexNode> GetNode(PageAddress address)
         {
             if (address.PageID == uint.MaxValue) return null;
 
-            var indexPage = _snapshot.GetPage<IndexPage>(address.PageID);
+            var indexPage = await _snapshot.GetPage<IndexPage>(address.PageID);
 
             return indexPage.GetIndexNode(address.Index);
         }
@@ -190,49 +195,49 @@ namespace LiteDB.Engine
         /// <summary>
         /// Gets all node list from passed nodeAddress (forward only)
         /// </summary>
-        public IEnumerable<IndexNode> GetNodeList(PageAddress nodeAddress)
+        public async IAsyncEnumerable<IndexNode> GetNodeList(PageAddress nodeAddress)
         {
-            var node = this.GetNode(nodeAddress);
+            var node = await this.GetNode(nodeAddress);
 
             while (node != null)
             {
                 yield return node;
 
-                node = this.GetNode(node.NextNode);
+                node = await this.GetNode(node.NextNode);
             }
         }
 
         /// <summary>
         /// Deletes all indexes nodes from pkNode
         /// </summary>
-        public void DeleteAll(PageAddress pkAddress)
+        public async Task DeleteAll(PageAddress pkAddress)
         {
-            var node = this.GetNode(pkAddress);
+            var node = await this.GetNode(pkAddress);
             var indexes = _snapshot.CollectionPage.GetCollectionIndexesSlots();
 
             while (node != null)
             {
-                this.DeleteSingleNode(node, indexes[node.Slot]);
+                await this.DeleteSingleNode(node, indexes[node.Slot]);
 
                 // move to next node
-                node = this.GetNode(node.NextNode);
+                node = await this.GetNode(node.NextNode);
             }
         }
 
         /// <summary>
         /// Deletes all list of nodes in toDelete - fix single linked-list and return last non-delete node
         /// </summary>
-        public IndexNode DeleteList(PageAddress pkAddress, HashSet<PageAddress> toDelete)
+        public async Task<IndexNode> DeleteList(PageAddress pkAddress, HashSet<PageAddress> toDelete)
         {
-            var last = this.GetNode(pkAddress);
-            var node = this.GetNode(last.NextNode); // starts in first node after PK
+            var last = await this.GetNode(pkAddress);
+            var node = await this.GetNode(last.NextNode); // starts in first node after PK
             var indexes = _snapshot.CollectionPage.GetCollectionIndexesSlots();
 
             while (node != null)
             {
                 if (toDelete.Contains(node.Position))
                 {
-                    this.DeleteSingleNode(node, indexes[node.Slot]);
+                    await this.DeleteSingleNode(node, indexes[node.Slot]);
 
                     // fix single-linked list from last non-delete delete
                     last.SetNextNode(node.NextNode);
@@ -244,7 +249,7 @@ namespace LiteDB.Engine
                 }
 
                 // move to next node
-                node = this.GetNode(node.NextNode);
+                node = await this.GetNode(node.NextNode);
             }
 
             return last;
@@ -253,13 +258,13 @@ namespace LiteDB.Engine
         /// <summary>
         /// Delete a single index node - fix tree double-linked list levels
         /// </summary>
-        private void DeleteSingleNode(IndexNode node, CollectionIndex index)
+        private async Task DeleteSingleNode(IndexNode node, CollectionIndex index)
         {
             for (int i = node.Level - 1; i >= 0; i--)
             {
                 // get previous and next nodes (between my deleted node)
-                var prevNode = this.GetNode(node.Prev[i]);
-                var nextNode = this.GetNode(node.Next[i]);
+                var prevNode = await this.GetNode(node.Prev[i]);
+                var nextNode = await this.GetNode(node.Next[i]);
 
                 if (prevNode != null)
                 {
@@ -273,25 +278,25 @@ namespace LiteDB.Engine
 
             node.Page.DeleteIndexNode(node.Position.Index);
 
-            _snapshot.AddOrRemoveFreeIndexList(node.Page, ref index.FreeIndexPageList);
+            index.FreeIndexPageList = await _snapshot.AddOrRemoveFreeIndexList(node.Page, index.FreeIndexPageList);
         }
 
         /// <summary>
         /// Delete all index nodes from a specific collection index. Scan over all PK nodes, read all nodes list and remove
         /// </summary>
-        public void DropIndex(CollectionIndex index)
+        public async Task DropIndex(CollectionIndex index)
         {
             var slot = index.Slot;
             var pkIndex = _snapshot.CollectionPage.PK;
 
-            foreach(var pkNode in this.FindAll(pkIndex, Query.Ascending))
+            await foreach(var pkNode in this.FindAll(pkIndex, Query.Ascending))
             {
                 var next = pkNode.NextNode;
                 var last = pkNode;
 
                 while (next != PageAddress.Empty)
                 {
-                    var node = this.GetNode(next);
+                    var node = await this.GetNode(next);
 
                     if (node.Slot == slot)
                     {
@@ -310,8 +315,8 @@ namespace LiteDB.Engine
             }
 
             // removing head/tail index nodes
-            this.GetNode(index.Head).Page.DeleteIndexNode(index.Head.Index);
-            this.GetNode(index.Tail).Page.DeleteIndexNode(index.Tail.Index);
+            (await this.GetNode(index.Head)).Page.DeleteIndexNode(index.Head.Index);
+            (await this.GetNode(index.Tail)).Page.DeleteIndexNode(index.Tail.Index);
         }
 
         #region Find
@@ -319,13 +324,13 @@ namespace LiteDB.Engine
         /// <summary>
         /// Return all index nodes from an index
         /// </summary>
-        public IEnumerable<IndexNode> FindAll(CollectionIndex index, int order)
+        public async IAsyncEnumerable<IndexNode> FindAll(CollectionIndex index, int order)
         {
-            var cur = order == Query.Ascending ? this.GetNode(index.Head) : this.GetNode(index.Tail);
+            var cur = await this.GetNode(order == Query.Ascending ? index.Head : index.Tail);
 
             while (!cur.GetNextPrev(0, order).IsEmpty)
             {
-                cur = this.GetNode(cur.GetNextPrev(0, order));
+                cur = await this.GetNode(cur.GetNextPrev(0, order));
 
                 // stop if node is head/tail
                 if (cur.Key.IsMinValue || cur.Key.IsMaxValue) yield break;
@@ -339,15 +344,15 @@ namespace LiteDB.Engine
         /// If index are unique, return unique value - if index are not unique, return first found (can start, middle or end)
         /// If not found but sibling = true, returns near node (only non-unique index)
         /// </summary>
-        public IndexNode Find(CollectionIndex index, BsonValue value, bool sibling, int order)
+        public async Task<IndexNode> Find(CollectionIndex index, BsonValue value, bool sibling, int order)
         {
-            var cur = order == Query.Ascending ? this.GetNode(index.Head) : this.GetNode(index.Tail);
+            var cur = await this.GetNode(order == Query.Ascending ? index.Head : index.Tail);
 
             for (int i = index.MaxLevel - 1; i >= 0; i--)
             {
-                for (; cur.GetNextPrev((byte)i, order).IsEmpty == false; cur = this.GetNode(cur.GetNextPrev((byte)i, order)))
+                for (; cur.GetNextPrev((byte)i, order).IsEmpty == false; cur = await this.GetNode(cur.GetNextPrev((byte)i, order)))
                 {
-                    var next = this.GetNode(cur.GetNextPrev((byte)i, order));
+                    var next = await this.GetNode(cur.GetNextPrev((byte)i, order));
                     var diff = next.Key.CompareTo(value, _collation);
 
                     if (diff == order && (i > 0 || !sibling)) break;

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -10,14 +12,14 @@ namespace LiteDB.Engine
         /// <summary>
         /// Implements delete based on IDs enumerable
         /// </summary>
-        public int Delete(string collection, IEnumerable<BsonValue> ids)
+        public async Task<int> DeleteAsync(string collection, IEnumerable<BsonValue> ids)
         {
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
             if (ids == null) throw new ArgumentNullException(nameof(ids));
 
-            return this.AutoTransaction(transaction =>
+            return await this.AutoTransaction(async transaction =>
             {
-                var snapshot = transaction.CreateSnapshot(LockMode.Write, collection, false);
+                var snapshot = await transaction.CreateSnapshot(LockMode.Write, collection, false);
                 var collectionPage = snapshot.CollectionPage;
                 var data = new DataService(snapshot);
                 var indexer = new IndexService(snapshot, _header.Pragmas.Collation);
@@ -31,18 +33,18 @@ namespace LiteDB.Engine
 
                 foreach (var id in ids)
                 {
-                    var pkNode = indexer.Find(pk, id, false, LiteDB.Query.Ascending);
+                    var pkNode = await indexer.Find(pk, id, false, LiteDB.Query.Ascending);
 
                     // if pk not found, continue
                     if (pkNode == null) continue;
 
                     // remove object data
-                    data.Delete(pkNode.DataBlock);
+                    await data.Delete(pkNode.DataBlock);
 
                     // delete all nodes (start in pk node)
-                    indexer.DeleteAll(pkNode.Position);
+                    await indexer.DeleteAll(pkNode.Position);
 
-                    transaction.Safepoint();
+                    await transaction.Safepoint();
 
                     count++;
                 }
@@ -54,7 +56,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Implements delete based on filter expression
         /// </summary>
-        public int DeleteMany(string collection, BsonExpression predicate)
+        public async Task<int> DeleteManyAsync(string collection, BsonExpression predicate)
         {
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
 
@@ -67,7 +69,7 @@ namespace LiteDB.Engine
             {
                 var id = predicate.Right.Execute(_header.Pragmas.Collation).First();
 
-                return this.Delete(collection, new BsonValue[] { id });
+                return await this.DeleteAsync(collection, new BsonValue[] { id });
             }
             else
             {
@@ -83,7 +85,7 @@ namespace LiteDB.Engine
                         query.Where.Add(predicate);
                     }
 
-                    using (var reader = this.Query(collection, query))
+                    using (var reader = await this.QueryAsync(collection, query))
                     {
                         while (reader.Read())
                         {
@@ -97,7 +99,7 @@ namespace LiteDB.Engine
                     }
                 }
 
-                return this.Delete(collection, getIds());
+                return await this.DeleteAsync(collection, getIds());
             }
         }
     }

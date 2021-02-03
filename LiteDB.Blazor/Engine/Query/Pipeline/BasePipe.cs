@@ -12,14 +12,12 @@ namespace LiteDB.Engine
     {
         protected readonly TransactionService _transaction;
         protected readonly IDocumentLookup _lookup;
-        protected readonly SortDisk _tempDisk;
         protected readonly EnginePragmas _pragmas;
 
-        public BasePipe(TransactionService transaction, IDocumentLookup lookup, SortDisk tempDisk, EnginePragmas pragmas)
+        public BasePipe(TransactionService transaction, IDocumentLookup lookup, EnginePragmas pragmas)
         {
             _transaction = transaction;
             _lookup = lookup;
-            _tempDisk = tempDisk;
             _pragmas = pragmas;
         }
 
@@ -157,21 +155,22 @@ namespace LiteDB.Engine
             var keyValues = source
                 .Select(x => new KeyValuePair<BsonValue, PageAddress>(expr.ExecuteScalar(x, _pragmas.Collation), x.RawId));
 
-            using (var sorter = new SortService(_tempDisk, order, _pragmas))
-            {
-                sorter.Insert(keyValues);
+            throw new NotImplementedException();
+            //using (var sorter = new SortService(_tempDisk, order, _pragmas))
+            //{
+            //    sorter.Insert(keyValues);
 
-                LOG($"sort {sorter.Count} keys in {sorter.Containers.Count} containers", "SORT");
+            //    LOG($"sort {sorter.Count} keys in {sorter.Containers.Count} containers", "SORT");
 
-                var result = sorter.Sort().Skip(offset).Take(limit);
+            //    var result = sorter.Sort().Skip(offset).Take(limit);
 
-                foreach (var keyValue in result)
-                {
-                    var doc = _lookup.Load(keyValue.Value);
+            //    foreach (var keyValue in result)
+            //    {
+            //        var doc = _lookup.Load(keyValue.Value);
 
-                    yield return doc;
-                }
-            }
+            //        yield return doc;
+            //    }
+            //}
         }
     }
 }

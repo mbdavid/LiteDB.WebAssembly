@@ -53,7 +53,7 @@ namespace LiteDB.Engine
                 // read all objects (read from PK index)
                 foreach (var pkNode in new IndexAll("_id", LiteDB.Query.Ascending).Run(collectionPage, indexer))
                 {
-                    using (var reader = new BufferReader(data.Read(pkNode.DataBlock)))
+                    using (var reader = new BufferReaderAsync(data.Read(pkNode.DataBlock)))
                     {
                         var doc = reader.ReadDocument(expression.Fields);
 

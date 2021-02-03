@@ -13,9 +13,10 @@ namespace LiteDB.Engine
         /// Initialize a new transaction. Transaction are created "per-thread". There is only one single transaction per thread.
         /// Return true if transaction was created or false if current thread already in a transaction.
         /// </summary>
-        public bool BeginTrans()
+        public async Task<bool> BeginTrans()
         {
-            var transacion = _monitor.GetTransaction(true, false, out var isNew);
+            var isNew = _transaction == null;
+            var transacion = await this.GetTransaction(false);
 
             transacion.ExplicitTransaction = true;
 
@@ -29,18 +30,20 @@ namespace LiteDB.Engine
         /// <summary>
         /// Persist all dirty pages into LOG file
         /// </summary>
-        public bool Commit()
+        public async Task<bool> Commit()
         {
-            var transaction = _monitor.GetTransaction(false, false, out _);
-
-            if (transaction != null)
+            if (_transaction != null)
             {
                 // do not accept explicit commit transaction when contains open cursors running
-                if (transaction.OpenCursors.Count > 0) throw new LiteException(0, "Current transaction contains open cursors. Close cursors before run Commit()");
+                if (_transaction.OpenCursors.Count > 0) throw new LiteException(0, "Current transaction contains open cursors. Close cursors before run Commit()");
 
-                if (transaction.State == TransactionState.Active)
+                if (_transaction.State == TransactionState.Active)
                 {
-                    this.CommitAndReleaseTransaction(transaction);
+                    // persist transaction
+                    await _transaction.Commit();
+
+                    // release transaction lock
+                    _locker.Release();
 
                     return true;
                 }
@@ -52,15 +55,17 @@ namespace LiteDB.Engine
         /// <summary>
         /// Do rollback to current transaction. Clear dirty pages in memory and return new pages to main empty linked-list
         /// </summary>
-        public bool Rollback()
+        public async Task<bool> Rollback()
         {
-            var transaction = _monitor.GetTransaction(false, false, out _);
+            if (_transaction == null) return false;
 
-            if (transaction != null && transaction.State == TransactionState.Active)
+            if (_transaction != null && _transaction.State == TransactionState.Active)
             {
-                transaction.Rollback();
+                // discard changes
+                await _transaction.Rollback();
 
-                _monitor.ReleaseTransaction(transaction);
+                // release lock
+                _locker.Release();
 
                 return true;
             }
@@ -69,19 +74,50 @@ namespace LiteDB.Engine
         }
 
         /// <summary>
+        /// Get/Set current transaction
+        /// </summary>
+        private TransactionService _transaction = null;
+
+        /// <summary>
+        /// Get current transaction or create a new one
+        /// </summary>
+        private async Task<TransactionService> GetTransaction(bool queryOnly)
+        {
+            if (_transaction == null)
+            {
+                // lock transaction
+                await _locker.WaitAsync(_header.Pragmas.Timeout);
+
+                _transaction = new TransactionService(_header, _disk, _walIndex, MAX_TRANSACTION_SIZE, queryOnly);
+            }
+
+            return _transaction;
+        }
+
+        /// <summary>
         /// Create (or reuse) a transaction an add try/catch block. Commit transaction if is new transaction
         /// </summary>
-        private T AutoTransaction<T>(Func<TransactionService, T> fn)
+        private async Task<T> AutoTransaction<T>(Func<TransactionService, Task<T>> fn)
         {
-            var transaction = _monitor.GetTransaction(true, false, out var isNew);
+            var isNew = _transaction == null;
+            var transaction = await this.GetTransaction(false);
 
             try
             {
-                var result = fn(transaction);
+                var result = await fn(transaction);
+
+                await transaction.Commit();
 
                 // if this transaction was auto-created for this operation, commit & dispose now
                 if (isNew)
-                    this.CommitAndReleaseTransaction(transaction);
+                {
+                    if (_header.Pragmas.Checkpoint > 0 &&
+                        transaction.Mode == LockMode.Write &&
+                        _disk.LogLength > (_header.Pragmas.Checkpoint * PAGE_SIZE))
+                    {
+                        await _walIndex.Checkpoint();
+                    }
+                }
 
                 return result;
             }
@@ -89,25 +125,11 @@ namespace LiteDB.Engine
             {
                 LOG(ex.Message, "ERROR");
 
-                transaction.Rollback();
+                await transaction.Rollback();
 
-                _monitor.ReleaseTransaction(transaction);
+                _transaction = null;
 
                 throw;
-            }
-        }
-
-        private void CommitAndReleaseTransaction(TransactionService transaction)
-        {
-            transaction.Commit();
-
-            _monitor.ReleaseTransaction(transaction);
-
-            if (_header.Pragmas.Checkpoint > 0 && 
-                transaction.Mode == LockMode.Write &&
-                _disk.LogLength > (_header.Pragmas.Checkpoint * PAGE_SIZE))
-            {
-                _walIndex.Checkpoint(true, false);
             }
         }
     }

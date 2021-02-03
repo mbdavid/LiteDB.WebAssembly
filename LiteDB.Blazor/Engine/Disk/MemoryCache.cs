@@ -9,33 +9,33 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
 {
     /// <summary>
     /// Manage linear memory segments to avoid re-create array buffer in heap memory
-    /// Do not share same memory store with diferent files
-    /// [ThreadSafe]
+    /// [NO ThreadSafe]
     /// </summary>
     internal class MemoryCache : IDisposable
     {
         /// <summary>
         /// Contains free ready-to-use pages in memory
-        /// - All pages here MUST be ShareCounter = 0
+        /// - All pages here MUST be IsWritable = false
         /// - All pages here MUST be Position = MaxValue
+        /// - All bytes must be 0
         /// </summary>
-        private readonly ConcurrentQueue<PageBuffer> _free = new ConcurrentQueue<PageBuffer>();
+        private readonly Queue<PageBuffer> _free = new Queue<PageBuffer>();
 
         /// <summary>
         /// Contains only clean pages - support page concurrency use
         /// - MUST:
         /// - Contains only 1 instance per Position
-        /// - Contains only pages with ShareCounter >= 0
-        /// *  = 0 - Page are avaiable but are not using by anyone (can be moved into _free list in next Extend())
-        /// * >= 1 - Page are in used by 1 or more threads. Page must run "Release" when finish use
+        /// - Contains only pages with IsWritable = false
         /// </summary>
-        private readonly ConcurrentDictionary<long, PageBuffer> _readable = new ConcurrentDictionary<long, PageBuffer>();
+        private readonly Dictionary<long, PageBuffer> _readable = new Dictionary<long, PageBuffer>();
 
         /// <summary>
         /// Get how many extends was made in this store
@@ -43,12 +43,23 @@ namespace LiteDB.Engine
         private int _extends = 0;
 
         /// <summary>
+        /// Get how many extends cache will extend memory before try reuse old readed pages. 
+        /// </summary>
+        private readonly int _maxExtends;
+
+        /// <summary>
         /// Get memory segment sizes
         /// </summary>
         private readonly int[] _segmentSizes;
 
-        public MemoryCache(int[] memorySegmentSizes)
+        /// <summary>
+        /// Get datafile stream
+        /// </summary>
+        private readonly Stream _stream;
+
+        public MemoryCache(Stream stream, int[] memorySegmentSizes, int maxExtends)
         {
+            _stream = stream;
             _segmentSizes = memorySegmentSizes;
 
             this.Extend();
@@ -59,27 +70,23 @@ namespace LiteDB.Engine
         /// <summary>
         /// Get page from clean cache (readable). If page not exits, create this new page and load data using factory fn
         /// </summary>
-        public PageBuffer GetReadablePage(long position, Action<long, BufferSlice> factory)
+        public async Task<PageBuffer> GetReadablePage(long position)
         {
             // try get from _readble dict or create new
-            var page = _readable.GetOrAdd(position, (k) =>
+            if (!_readable.TryGetValue(position, out var page))
             {
                 // get new page from _free pages (or extend)
-                var newPage = this.GetFreePage();
+                page = this.GetFreePage();
 
-                newPage.Position = position;
+                page.Position = position;
+                page.Timestamp = DateTime.UtcNow.Ticks;
 
-                // load page content with disk stream
-                factory(position, newPage);
+                // set stream position 
+                _stream.Position = position;
 
-                return newPage;
-            });
-
-            // update LRU
-            Interlocked.Exchange(ref page.Timestamp, DateTime.UtcNow.Ticks);
-
-            // increment share counter
-            Interlocked.Increment(ref page.ShareCounter);
+                // read async from stream
+                await _stream.ReadAsync(page.Array, page.Offset, PAGE_SIZE);
+            }
 
             return page;
         }
@@ -92,7 +99,7 @@ namespace LiteDB.Engine
         /// Request for a writable page - no other can read this page and this page has no reference
         /// Writable pages can be MoveToReadable() or DiscardWritable() - but never Released()
         /// </summary>
-        public PageBuffer GetWritablePage(long position, Action<long, BufferSlice> factory)
+        public async Task<PageBuffer> GetWritablePage(long position)
         {
             // write pages always contains a new buffer array
             var writable = this.NewPage(position);
@@ -104,7 +111,11 @@ namespace LiteDB.Engine
             }
             else
             {
-                factory(position, writable);
+                // set stream position 
+                _stream.Position = position;
+
+                // read async from stream
+                await _stream.ReadAsync(writable.Array, writable.Offset, PAGE_SIZE);
             }
 
             return writable;
@@ -129,7 +140,7 @@ namespace LiteDB.Engine
             page.Position = position;
 
             // define as writable
-            page.ShareCounter = BUFFER_WRITABLE;
+            page.IsWritable = true;
 
             // Timestamp = 0 means this page was never used (do not clear)
             if (page.Timestamp > 0)
@@ -151,17 +162,13 @@ namespace LiteDB.Engine
         public bool TryMoveToReadable(PageBuffer page)
         {
             ENSURE(page.Position != long.MaxValue, "page must have a position");
-            ENSURE(page.ShareCounter == BUFFER_WRITABLE, "page must be writable");
-
-            // set page as not in use
-            page.ShareCounter = 0;
+            ENSURE(page.IsWritable, "page must be writable");
 
             var added = _readable.TryAdd(page.Position, page);
 
-            // if not added, let's back ShareCounter to writable state
-            if (!added)
+            if (added)
             {
-                page.ShareCounter = BUFFER_WRITABLE;
+                page.IsWritable = false;
             }
 
             return added;
@@ -176,37 +183,30 @@ namespace LiteDB.Engine
         public PageBuffer MoveToReadable(PageBuffer page)
         {
             ENSURE(page.Position != long.MaxValue, "page must have position to be readable");
-            ENSURE(page.ShareCounter == BUFFER_WRITABLE, "page must be writable before from to readable dict");
+            ENSURE(page.IsWritable, "page must be writable before from to readable dict");
 
-            var added = true;
+            // mark page as readble
+            page.IsWritable = false;
 
-            // no concurrency in writable page
-            page.ShareCounter = 1;
-
-            var readable = _readable.AddOrUpdate(page.Position, page, (newKey, current) =>
+            if (_readable.TryAdd(page.Position, page))
             {
-                // if page already exist inside readable list, should never be in-used (this will be garanteed by lock control)
-                ENSURE(current.ShareCounter == 0, "user must ensure this page are not in use when mark as read only");
-
-                current.ShareCounter = 1;
+                return page;
+            }
+            else
+            {
+                // if page already exists, update content 
+                var current = _readable[page.Position];
 
                 // if page already in cache, this is a duplicate page in memory
                 // must update cached page with new page content
                 Buffer.BlockCopy(page.Array, page.Offset, current.Array, current.Offset, PAGE_SIZE);
 
-                added = false;
-
-                return current;
-            });
-
-            // if page was not added into readable list move page to free list
-            if (added == false)
-            {
+                // discard current into a free page
                 this.DiscardPage(page);
-            }
 
-            // return page that are in _readble list
-            return readable;
+                // return page that are in _readble list
+                return current;
+            }
         }
 
         #endregion
@@ -247,15 +247,14 @@ namespace LiteDB.Engine
         /// </summary>
         public void DiscardPage(PageBuffer page)
         {
-            ENSURE(page.ShareCounter == BUFFER_WRITABLE, "discarded page must be writable");
+            ENSURE(page.IsWritable, "discarded page must be writable");
 
             // clear page controls
-            page.ShareCounter = 0;
+            page.IsWritable = false;
             page.Position = long.MaxValue;
 
-            // DO NOT CLEAR CONTENT
-            // when this page will requested from free list will be clear if request was from NewPage()
-            //  or will be overwrite by ReadPage
+            // clear content
+            page.Fill(0);
 
             // added into free list
             _free.Enqueue(page);
@@ -272,21 +271,11 @@ namespace LiteDB.Engine
         {
             if (_free.TryDequeue(out var page))
             {
-                ENSURE(page.Position == long.MaxValue, "pages in memory store must have no position defined");
-                ENSURE(page.ShareCounter == 0, "pages in memory store must be non-shared");
-
                 return page;
             }
-            // if no more page inside memory store - extend store/reuse non-shared pages
             else
             {
-                // ensure only 1 single thread call extend method
-                lock(_free)
-                {
-                    if (_free.Count > 0) return this.GetFreePage();
-
-                    this.Extend();
-                }
+                this.Extend();
 
                 return this.GetFreePage();
             }
@@ -297,55 +286,10 @@ namespace LiteDB.Engine
         /// </summary>
         private void Extend()
         {
-            // count how many pages in cache are available to be re-used (is not in use at this time)
-            var emptyShareCounter = _readable.Values.Count(x => x.ShareCounter == 0);
-
             // get segmentSize
             var segmentSize = _segmentSizes[Math.Min(_segmentSizes.Length - 1, _extends)];
 
-            // if this count is larger than MEMORY_SEGMENT_SIZE, re-use all this pages
-            if (emptyShareCounter > segmentSize)
-            {
-                // get all readable pages that can return to _free (slow way)
-                // sort by timestamp used (set as free oldest first)
-                var readables = _readable
-                    .Where(x => x.Value.ShareCounter == 0)
-                    .OrderBy(x => x.Value.Timestamp)
-                    .Select(x => x.Key)
-                    .Take(segmentSize)
-                    .ToArray();
-
-                // move pages from readable list to free list
-                foreach (var key in readables)
-                {
-                    var removed = _readable.TryRemove(key, out var page);
-
-                    ENSURE(removed, "page should be in readable list before move to free list");
-
-                    // if removed page was changed between make array and now, must add back to readable list
-                    if (page.ShareCounter > 0)
-                    {
-                        // but wait: between last "remove" and now, another thread can added this page
-                        if (!_readable.TryAdd(key, page))
-                        {
-                            // this is a terrible situation, to avoid memory corruption I will throw expcetion for now
-                            throw new LiteException(0, "MemoryCache: removed in-use memory page. This situation has no way to fix (yet). Throwing exception to avoid database corruption. No other thread can read/write from database now.");
-                        }
-                    }
-                    else
-                    {
-                        ENSURE(page.ShareCounter == 0, "page should be not in use by anyone");
-
-                        // clean controls
-                        page.Position = long.MaxValue;
-
-                        _free.Enqueue(page);
-                    }
-                }
-
-                LOG($"re-using cache pages (flushing {_free.Count} pages)", "CACHE");
-            }
-            else
+            if (_extends < _maxExtends)
             {
                 // create big linear array in heap memory (LOH => 85Kb)
                 var buffer = new byte[PAGE_SIZE * segmentSize];
@@ -359,15 +303,33 @@ namespace LiteDB.Engine
                 }
 
                 _extends++;
+            }
+            else
+            {
+                // try get clean pages from readbles
+                var readables = _readable
+                    .OrderBy(x => x.Value.Timestamp)
+                    .Select(x => x.Key)
+                    .Take(segmentSize)
+                    .ToArray();
 
-                LOG($"extending memory usage: (segments: {_extends})", "CACHE");
+                // move pages from readable list to free list
+                foreach (var key in readables)
+                {
+                    _readable.Remove(key, out var page);
+
+                    this.DiscardPage(page);
+                }
+
+                // memory overflow
+                if (readables.Length == 0)
+                {
+                    var limit = FileHelper.FormatFileSize(this.ExtendPages * PAGE_SIZE);
+
+                    throw new LiteException(0, $"LiteDB has reached the maximum memory limit ({limit}). Try to use smaller transactions to avoid this error");
+                }
             }
         }
-
-        /// <summary>
-        /// Return how many pages are in use when call this method (ShareCounter != 0).
-        /// </summary>
-        public int PagesInUse => _readable.Values.Where(x => x.ShareCounter != 0).Count();
 
         /// <summary>
         /// Return how many pages are available completed free
@@ -403,13 +365,9 @@ namespace LiteDB.Engine
         {
             var counter = 0;
 
-            ENSURE(this.PagesInUse == 0, "must have no pages in used when call Clear() cache");
-
             foreach (var page in _readable.Values)
             {
-                page.Position = long.MaxValue;
-
-                _free.Enqueue(page);
+                this.DiscardPage(page);
 
                 counter++;
             }

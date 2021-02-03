@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -17,11 +19,8 @@ namespace LiteDB.Engine
         // instances from Engine
         private readonly HeaderPage _header;
         private readonly EngineSettings _settings;
-        private readonly LockService _locker;
         private readonly DiskService _disk;
-        private readonly DiskReader _reader;
         private readonly WalIndexService _walIndex;
-        private readonly TransactionMonitor _monitor;
 
         // transaction controls
         private readonly Dictionary<string, Snapshot> _snapshots = new Dictionary<string, Snapshot>(StringComparer.OrdinalIgnoreCase);
@@ -57,15 +56,12 @@ namespace LiteDB.Engine
         /// </summary>
         public bool ExplicitTransaction { get; set; } = false;
 
-        public TransactionService(HeaderPage header, EngineSettings settings, LockService locker, DiskService disk, WalIndexService walIndex, int maxTransactionSize, TransactionMonitor monitor, bool queryOnly)
+        public TransactionService(HeaderPage header, DiskService disk, WalIndexService walIndex, int maxTransactionSize, bool queryOnly)
         {
             // retain instances
             _header = header;
-            _settings = settings;
-            _locker = locker;
             _disk = disk;
             _walIndex = walIndex;
-            _monitor = monitor;
 
             this.QueryOnly = queryOnly;
             this.MaxTransactionSize = maxTransactionSize;
@@ -73,7 +69,6 @@ namespace LiteDB.Engine
             // create new transactionID
             _transactionID = walIndex.NextTransactionID();
             _startTime = DateTime.UtcNow;
-            _reader = _disk.GetReader();
         }
 
         /// <summary>
@@ -87,14 +82,12 @@ namespace LiteDB.Engine
         /// <summary>
         /// Create (or get from transaction-cache) snapshot and return
         /// </summary>
-        public Snapshot CreateSnapshot(LockMode mode, string collection, bool addIfNotExists)
+        public async Task<Snapshot> CreateSnapshot(LockMode mode, string collection, bool addIfNotExists)
         {
             ENSURE(_state == TransactionState.Active, "transaction must be active to create new snapshot");
 
             // check for readonly database
-            if (mode == LockMode.Write && _settings.ReadOnly) throw new LiteException(0, "Database was initialized as read only. No write operations are supported");
-
-            Snapshot create() => new Snapshot(mode, collection, _header, _transactionID, _transPages, _locker, _walIndex, _reader, addIfNotExists);
+            if (mode == LockMode.Write) throw new LiteException(0, "Database was initialized as read only. No write operations are supported");
 
             if (_snapshots.TryGetValue(collection, out var snapshot))
             {
@@ -109,13 +102,13 @@ namespace LiteDB.Engine
                     _snapshots.Remove(collection);
 
                     // create new snapshot with write mode
-                    _snapshots[collection] = snapshot = create();
+                    _snapshots[collection] = snapshot = await Snapshot.CreateAsync(mode, collection, _header, _transactionID, _transPages, _walIndex, _disk, addIfNotExists);
                 }
             }
             else
             {
                 // if not exits, let's create here
-                _snapshots[collection] = snapshot = create();
+                _snapshots[collection] = snapshot = await Snapshot.CreateAsync(mode, collection, _header, _transactionID, _transPages, _walIndex, _disk, addIfNotExists);
             }
 
             // update transaction mode to write in first write snaphost request 
@@ -127,18 +120,18 @@ namespace LiteDB.Engine
         /// <summary>
         /// If current transaction contains too much pages, now is safe to remove clean pages from memory and flush to wal disk dirty pages
         /// </summary>
-        public void Safepoint()
+        public async Task Safepoint()
         {
             if (_state != TransactionState.Active) throw new LiteException(0, "This transaction are invalid state");
 
-            if (_monitor.CheckSafepoint(this))
+            if (_transPages.TransactionSize >= MAX_TRANSACTION_SIZE)
             {
                 LOG($"safepoint flushing transaction pages: {_transPages.TransactionSize}", "TRANSACTION");
 
                 // if any snapshot are writable, persist pages
                 if (_mode == LockMode.Write)
                 {
-                    this.PersistDirtyPages(false);
+                    await this.PersistDirtyPages(false);
                 }
 
                 // clear local pages in all snapshots (read/write snapshosts)
@@ -155,7 +148,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Persist all dirty in-memory pages (in all snapshots) and clear local pages list (even clean pages)
         /// </summary>
-        private int PersistDirtyPages(bool commit)
+        private async Task<int> PersistDirtyPages(bool commit)
         {
             var dirty = 0;
 
@@ -237,7 +230,7 @@ namespace LiteDB.Engine
 
             // write all dirty pages, in sequence on log-file and store references into log pages on transPages
             // (works only for Write snapshots)
-            var count = _disk.WriteAsync(source());
+            var count = await _disk.WriteLogPages(source());
 
             // now, discard all clean pages (because those pages are writable and must be readable)
             // from write snapshots
@@ -253,7 +246,7 @@ namespace LiteDB.Engine
         /// Write pages into disk and confirm transaction in wal-index. Returns true if any dirty page was updated
         /// After commit, all snapshot are closed
         /// </summary>
-        public void Commit()
+        public async Task Commit()
         {
             ENSURE(_state == TransactionState.Active, $"transaction must be active to commit (current state: {_state})");
 
@@ -262,7 +255,7 @@ namespace LiteDB.Engine
             if (_mode == LockMode.Write || _transPages.HeaderChanged)
             {
                 // persist all dirty page as commit mode (mark last page as IsConfirm)
-                var count = this.PersistDirtyPages(true);
+                var count = await this.PersistDirtyPages(true);
 
                 // update wal-index (if any page was added into log disk)
                 if(count > 0)
@@ -284,7 +277,7 @@ namespace LiteDB.Engine
         /// Rollback transaction operation - ignore all modified pages and return new pages into disk
         /// After rollback, all snapshot are closed
         /// </summary>
-        public void Rollback()
+        public async Task Rollback()
         {
             ENSURE(_state == TransactionState.Active, $"transaction must be active to rollback (current state: {_state})");
 
@@ -293,7 +286,7 @@ namespace LiteDB.Engine
             // if transaction contains new pages, must return to database in another transaction
             if (_transPages.NewPages.Count > 0)
             {
-                this.ReturnNewPages();
+                await this.ReturnNewPages();
             }
 
             // dispose all snaphosts
@@ -320,71 +313,67 @@ namespace LiteDB.Engine
         /// Return added pages when occurs an rollback transaction (run this only in rollback). Create new transactionID and add into
         /// Log file all new pages as EmptyPage in a linked order - also, update SharedPage before store
         /// </summary>
-        private void ReturnNewPages()
+        private async Task ReturnNewPages()
         {
             // create new transaction ID
             var transactionID = _walIndex.NextTransactionID();
 
-            // now lock header to update LastTransactionID/FreePageList
-            lock (_header)
+            // persist all empty pages into wal-file
+            var pagePositions = new Dictionary<uint, PagePosition>();
+
+            IEnumerable<PageBuffer> source()
             {
-                // persist all empty pages into wal-file
-                var pagePositions = new Dictionary<uint, PagePosition>();
-
-                IEnumerable<PageBuffer> source()
+                // create list of empty pages with forward link pointer
+                for (var i = 0; i < _transPages.NewPages.Count; i++)
                 {
-                    // create list of empty pages with forward link pointer
-                    for (var i = 0; i < _transPages.NewPages.Count; i++)
+                    var pageID = _transPages.NewPages[i];
+                    var next = i < _transPages.NewPages.Count - 1 ? _transPages.NewPages[i + 1] : _header.FreeEmptyPageList;
+
+                    var buffer = _disk.Cache.NewPage();
+
+                    var page = new BasePage(buffer, pageID, PageType.Empty)
                     {
-                        var pageID = _transPages.NewPages[i];
-                        var next = i < _transPages.NewPages.Count - 1 ? _transPages.NewPages[i + 1] : _header.FreeEmptyPageList;
+                        NextPageID = next,
+                        TransactionID = transactionID
+                    };
 
-                        var buffer = _disk.Cache.NewPage();
+                    yield return page.UpdateBuffer();
 
-                        var page = new BasePage(buffer, pageID, PageType.Empty)
-                        {
-                            NextPageID = next,
-                            TransactionID = transactionID
-                        };
-
-                        yield return page.UpdateBuffer();
-
-                        // update wal
-                        pagePositions[pageID] = new PagePosition(pageID, buffer.Position);
-                    }
-
-                    // update header page with my new transaction ID
-                    _header.TransactionID = transactionID;
-                    _header.FreeEmptyPageList = _transPages.NewPages[0];
-                    _header.IsConfirmed = true;
-
-                    // clone header buffer
-                    var buf = _header.UpdateBuffer();
-                    var clone = _disk.Cache.NewPage();
-
-                    Buffer.BlockCopy(buf.Array, buf.Offset, clone.Array, clone.Offset, clone.Count);
-
-                    yield return clone;
-                };
-
-                // create a header save point before any change
-                var safepoint = _header.Savepoint();
-
-                try
-                {
-                    // write all pages (including new header)
-                    _disk.WriteAsync(source());
-                }
-                catch
-                {
-                    // must revert all header content if any error occurs during header change
-                    _header.Restore(safepoint);
-                    throw;
+                    // update wal
+                    pagePositions[pageID] = new PagePosition(pageID, buffer.Position);
                 }
 
-                // now confirm this transaction to wal
-                _walIndex.ConfirmTransaction(transactionID, pagePositions.Values);
+                // update header page with my new transaction ID
+                _header.TransactionID = transactionID;
+                _header.FreeEmptyPageList = _transPages.NewPages[0];
+                _header.IsConfirmed = true;
+
+                // clone header buffer
+                var buf = _header.UpdateBuffer();
+                var clone = _disk.Cache.NewPage();
+
+                Buffer.BlockCopy(buf.Array, buf.Offset, clone.Array, clone.Offset, clone.Count);
+
+                yield return clone;
+            };
+
+            // create a header save point before any change
+            var safepoint = _header.Savepoint();
+
+            try
+            {
+                // write all pages (including new header)
+                await _disk.WriteLogPages(source());
             }
+            catch
+            {
+                // must revert all header content if any error occurs during header change
+                _header.Restore(safepoint);
+                throw;
+            }
+
+            // now confirm this transaction to wal
+            _walIndex.ConfirmTransaction(transactionID, pagePositions.Values);
         }
 
         /// <summary>
@@ -418,28 +407,9 @@ namespace LiteDB.Engine
                     // discard all clean pages
                     _disk.Cache.DiscardCleanPages(snapshot.GetWritablePages(false, true).Select(x => x.Buffer));
                 }
-
-                // release buffers in read-only snaphosts
-                foreach (var snapshot in _snapshots.Values.Where(x => x.Mode == LockMode.Read))
-                {
-                    foreach (var page in snapshot.LocalPages)
-                    {
-                        page.Buffer.Release();
-                    }
-
-                    snapshot.CollectionPage?.Buffer.Release();
-                }
             }
-
-            _reader.Dispose();
 
             _state = TransactionState.Disposed;
-
-            if (!dispose)
-            {
-                // Remove transaction monitor's dictionary
-                _monitor.ReleaseTransaction(this);
-            }
         }
     }
 }

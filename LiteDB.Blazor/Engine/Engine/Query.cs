@@ -12,7 +12,7 @@ namespace LiteDB.Engine
         /// Run query over collection using a query definition. 
         /// Returns a new IBsonDataReader that run and return first document result (open transaction)
         /// </summary>
-        public IBsonDataReader Query(string collection, Query query)
+        public IBsonDataReader QueryAsync(string collection, Query query)
         {
             if (string.IsNullOrWhiteSpace(collection)) throw new ArgumentNullException(nameof(collection));
             if (query == null) throw new ArgumentNullException(nameof(query));
@@ -31,9 +31,9 @@ namespace LiteDB.Engine
                 collection = sys.Name;
             }
 
-            var exec = new QueryExecutor(this, _monitor, _sortDisk, _header.Pragmas, collection, query, source);
+            var exec = new QueryExecutor(this, _header.Pragmas, collection, query, source);
 
-            return exec.ExecuteQuery();
+            return await exec.ExecuteQuery();
         }
     }
 }

@@ -11,19 +11,15 @@ namespace LiteDB.Engine
     internal class QueryExecutor
     {
         private readonly LiteEngine _engine;
-        private readonly TransactionMonitor _monitor;
-        private readonly SortDisk _sortDisk;
         private readonly EnginePragmas _pragmas;
         private readonly CursorInfo _cursor;
         private readonly string _collection;
         private readonly Query _query;
         private readonly IEnumerable<BsonDocument> _source;
 
-        public QueryExecutor(LiteEngine engine, TransactionMonitor monitor, SortDisk sortDisk, EnginePragmas pragmas, string collection, Query query, IEnumerable<BsonDocument> source)
+        public QueryExecutor(LiteEngine engine, EnginePragmas pragmas, string collection, Query query, IEnumerable<BsonDocument> source)
         {
             _engine = engine;
-            _monitor = monitor;
-            _sortDisk = sortDisk;
             _pragmas = pragmas;
             _collection = collection;
             _query = query;

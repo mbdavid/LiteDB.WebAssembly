@@ -22,7 +22,7 @@ namespace LiteDB.Engine
                 _tokenizer.ReadToken().Expect(TokenType.EOF, TokenType.SemiColon);
             }
 
-            var result = _engine.Commit();
+            var result = _engine.CommitAsync();
 
             return new BsonDataReader(result);
         }

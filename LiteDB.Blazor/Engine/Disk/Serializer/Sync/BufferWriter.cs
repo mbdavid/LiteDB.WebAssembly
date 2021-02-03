@@ -6,7 +6,7 @@ using static LiteDB.Constants;
 namespace LiteDB.Engine
 {
     /// <summary>
-    /// Write data types/BSON data into byte[]. It's forward only and support multi buffer slice as source
+    /// Write data types/BSON data into byte[]. It's fordward only and support multi buffer slice as source
     /// </summary>
     internal class BufferWriter : IDisposable
     {
@@ -51,15 +51,15 @@ namespace LiteDB.Engine
         #region Basic Write
 
         /// <summary>
-        /// Move forward in current segment. If array segment finish, open next segment
+        /// Move fordward in current segment. If array segment finish, open next segment
         /// Returns true if move to another segment - returns false if continue in same segment
         /// </summary>
-        private bool MoveForward(int count)
+        private bool MoveFordward(int count)
         {
-            // do not move forward if source finish
+            // do not move fordward if source finish
             if (_isEOF) return false;
 
-            ENSURE(_currentPosition + count <= _current.Count, "forward is only for current segment");
+            ENSURE(_currentPosition + count <= _current.Count, "fordward are only for current segment");
 
             _currentPosition += count;
             _position += count;
@@ -108,7 +108,7 @@ namespace LiteDB.Engine
                 bufferPosition += bytesToCopy;
 
                 // move position in current segment (and go to next segment if finish)
-                this.MoveForward(bytesToCopy);
+                this.MoveFordward(bytesToCopy);
 
                 if (_isEOF) break;
             }
@@ -150,8 +150,6 @@ namespace LiteDB.Engine
         /// </summary>
         public void WriteCString(string value)
         {
-            if (value.IndexOf('\0') > -1) throw LiteException.InvalidNullCharInString();
-
             var bytesCount = Encoding.UTF8.GetByteCount(value);
             var available = _current.Count - _currentPosition; // avaiable in current segment
 
@@ -162,7 +160,7 @@ namespace LiteDB.Engine
 
                 _current[_currentPosition + bytesCount] = 0x00;
 
-                this.MoveForward(bytesCount + 1); // +1 to '\0'
+                this.MoveFordward(bytesCount + 1); // +1 to '\0'
             }
             else
             {
@@ -174,7 +172,7 @@ namespace LiteDB.Engine
 
                 _current[_currentPosition] = 0x00;
 
-                this.MoveForward(1);
+                this.MoveFordward(1);
 
                 BufferPool.Return(buffer);
             }
@@ -197,7 +195,7 @@ namespace LiteDB.Engine
             {
                 Encoding.UTF8.GetBytes(value, 0, value.Length, _current.Array, _current.Offset + _currentPosition);
 
-                this.MoveForward(count);
+                this.MoveFordward(count);
             }
             else
             {
@@ -227,7 +225,7 @@ namespace LiteDB.Engine
             {
                 toBytes(value, _current.Array, _current.Offset + _currentPosition);
 
-                this.MoveForward(size);
+                this.MoveFordward(size);
             }
             else
             {
@@ -289,7 +287,7 @@ namespace LiteDB.Engine
             {
                 value.ToByteArray(_current.Array, _current.Offset + _currentPosition);
 
-                this.MoveForward(12);
+                this.MoveFordward(12);
             }
             else
             {
@@ -309,7 +307,7 @@ namespace LiteDB.Engine
         public void Write(bool value)
         {
             _current[_currentPosition] = value ? (byte)0x01 : (byte)0x00;
-            this.MoveForward(1);
+            this.MoveFordward(1);
         }
 
         /// <summary>
@@ -318,7 +316,7 @@ namespace LiteDB.Engine
         public void Write(byte value)
         {
             _current[_currentPosition] = value;
-            this.MoveForward(1);
+            this.MoveFordward(1);
         }
 
         /// <summary>

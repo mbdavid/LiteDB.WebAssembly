@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -15,8 +17,7 @@ namespace LiteDB.Engine
     {
         // instances from Engine
         private readonly HeaderPage _header;
-        private readonly LockService _locker;
-        private readonly DiskReader _reader;
+        private readonly DiskService _disk;
         private readonly WalIndexService _walIndex;
 
         // instances from transaction
@@ -27,7 +28,7 @@ namespace LiteDB.Engine
         private readonly int _readVersion;
         private readonly LockMode _mode;
         private readonly string _collectionName;
-        private readonly CollectionPage _collectionPage;
+        private CollectionPage _collectionPage;
 
         // local page cache - contains only pages about this collection (but do not contains CollectionPage - use this.CollectionPage)
         private readonly Dictionary<uint, BasePage> _localPages = new Dictionary<uint, BasePage>();
@@ -39,30 +40,53 @@ namespace LiteDB.Engine
         public ICollection<BasePage> LocalPages => _localPages.Values;
         public int ReadVersion => _readVersion;
 
-        public Snapshot(LockMode mode, string collectionName, HeaderPage header, uint transactionID, TransactionPages transPages, LockService locker, WalIndexService walIndex, DiskReader reader, bool addIfNotExists)
+        #region Async Constructor
+
+        /// <summary>
+        /// Async constructor
+        /// </summary>
+        public static async Task<Snapshot> CreateAsync(
+            LockMode mode,
+            string collectionName,
+            HeaderPage header,
+            uint transactionID,
+            TransactionPages transPages,
+            WalIndexService walIndex,
+            DiskService disk,
+            bool addIfNotExists)
+        {
+            var snapshot = new Snapshot(mode, collectionName, header, transactionID, transPages, walIndex, disk);
+            await snapshot.InitializeAsync(addIfNotExists);
+            return snapshot;
+        }
+
+        private Snapshot(
+            LockMode mode,
+            string collectionName,
+            HeaderPage header,
+            uint transactionID,
+            TransactionPages transPages,
+            WalIndexService walIndex,
+            DiskService disk)
         {
             _mode = mode;
             _collectionName = collectionName;
             _header = header;
             _transactionID = transactionID;
             _transPages = transPages;
-            _locker = locker;
             _walIndex = walIndex;
-            _reader = reader;
-
-            // enter in lock mode according initial mode
-            if (mode == LockMode.Write)
-            {
-                _locker.EnterLock(_collectionName);
-            }
+            _disk = disk;
 
             // get lastest read version from wal-index
             _readVersion = _walIndex.CurrentReadVersion;
+        }
 
+        private async Task InitializeAsync(bool addIfNotExists)
+        {
             var srv = new CollectionService(_header, this, _transPages);
 
             // read collection (create if new - load virtual too)
-            srv.Get(_collectionName, addIfNotExists, ref _collectionPage);
+            _collectionPage = await srv.Get(_collectionName, addIfNotExists);
 
             // clear local pages (will clear _collectionPage link reference)
             if (_collectionPage != null)
@@ -70,7 +94,10 @@ namespace LiteDB.Engine
                 // local pages contains only data/index pages
                 _localPages.Remove(_collectionPage.PageID);
             }
+
         }
+
+        #endregion
 
         /// <summary>
         /// Get all snapshot pages (can or not include collectionPage) - If included, will be last page
@@ -94,41 +121,16 @@ namespace LiteDB.Engine
         }
 
         /// <summary>
-        /// Clear all local pages and return page buffer to file reader. Do not release CollectionPage (only in Dispose method)
+        /// Clear all local pages from this snapshot
         /// </summary>
         public void Clear()
         {
-            // release pages only if snapshot are read only
-            if (_mode == LockMode.Read)
-            {
-                // release all read pages (except collection page)
-                foreach (var page in _localPages.Values)
-                {
-                    page.Buffer.Release();
-                }
-            }
-
             _localPages.Clear();
         }
 
-        /// <summary>
-        /// Dispose stream readers and exit collection lock
-        /// </summary>
         public void Dispose()
         {
-            // release all data/index pages
             this.Clear();
-
-            // release collection page (in read mode)
-            if (_mode == LockMode.Read && _collectionPage != null)
-            {
-                _collectionPage.Buffer.Release();
-            }
-
-            if(_mode == LockMode.Write)
-            {
-                _locker.ExitLock(_collectionName);
-            }
         }
 
         #region Page Version functions
@@ -136,7 +138,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Get a a valid page for this snapshot (must consider local-index and wal-index)
         /// </summary>
-        public T GetPage<T>(uint pageID)
+        public async Task<T> GetPage<T>(uint pageID)
             where T : BasePage
         {
             ENSURE(pageID <= _header.LastPageID, "request page must be less or equals lastest page in data file");
@@ -148,7 +150,7 @@ namespace LiteDB.Engine
             }
 
             // if page is not in local cache, get from disk (log/wal/data)
-            page = this.ReadPage<T>(pageID);
+            page = await this.ReadPage<T>(pageID);
 
             // add into local pages
             _localPages[pageID] = page;
@@ -162,14 +164,14 @@ namespace LiteDB.Engine
         /// <summary>
         /// Read page from disk (dirty, wal or data)
         /// </summary>
-        private T ReadPage<T>(uint pageID)
+        private async Task<T> ReadPage<T>(uint pageID)
             where T : BasePage
         {
             // if not inside local pages can be a dirty page saved in log file
             if (_transPages.DirtyPages.TryGetValue(pageID, out var walPosition))
             {
                 // read page from log file
-                var buffer = _reader.ReadPage(walPosition.Position, _mode == LockMode.Write);
+                var buffer = await _disk.ReadPage(walPosition.Position, _mode == LockMode.Write);
                 var dirty = BasePage.ReadPage<T>(buffer);
 
                 ENSURE(dirty.TransactionID == _transactionID, "this page must came from same transaction");
@@ -183,7 +185,7 @@ namespace LiteDB.Engine
             if (pos != long.MaxValue)
             {
                 // read page from log file
-                var buffer = _reader.ReadPage(pos, _mode == LockMode.Write);
+                var buffer = await _disk.ReadPage(pos, _mode == LockMode.Write);
                 var logPage = BasePage.ReadPage<T>(buffer);
 
                 // clear some data inside this page (will be override when write on log file)
@@ -198,7 +200,7 @@ namespace LiteDB.Engine
                 var pagePosition = BasePage.GetPagePosition(pageID);
 
                 // read page from data file
-                var buffer = _reader.ReadPage(pagePosition, _mode == LockMode.Write);
+                var buffer = await _disk.ReadPage(pagePosition, _mode == LockMode.Write);
                 var diskpage = BasePage.ReadPage<T>(buffer);
 
                 ENSURE(diskpage.IsConfirmed == false || diskpage.TransactionID != 0, "page are not header-clear in data file");
@@ -211,7 +213,7 @@ namespace LiteDB.Engine
         /// Returns a page that contains space enough to data to insert new object - if one does not exit, creates a new page.
         /// Before return page, fix empty free list slot according with passed length
         /// </summary>
-        public DataPage GetFreeDataPage(int bytesLength)
+        public async Task<DataPage> GetFreeDataPage(int bytesLength)
         {
             var length = bytesLength + BasePage.SLOT_SIZE; // add +4 bytes for footer slot
 
@@ -226,7 +228,7 @@ namespace LiteDB.Engine
                 // there is no free page here, try find princess in another castle
                 if (freePageID == uint.MaxValue) continue;
 
-                var page = this.GetPage<DataPage>(freePageID);
+                var page = await this.GetPage<DataPage>(freePageID);
 
                 ENSURE(page.PageListSlot == currentSlot, "stored slot must be same as called");
                 ENSURE(page.FreeBytes >= length, "ensure selected page has space enougth for this content");
@@ -238,38 +240,38 @@ namespace LiteDB.Engine
             }
 
             // if not page free list page avaiable, create new page
-            return this.NewPage<DataPage>();
+            return await this.NewPage<DataPage>();
         }
 
         /// <summary>
         /// Get a index page with space enouth for a new index node
         /// </summary>
-        public IndexPage GetFreeIndexPage(int bytesLength, ref uint freeIndexPageList)
+        public async Task<(IndexPage indexPage, uint freeIndexPageList)> GetFreeIndexPage(int bytesLength, uint freeIndexPageList)
         {
             IndexPage page;
 
             // if there is not page in list pages, create new page
             if (freeIndexPageList == uint.MaxValue)
             {
-                page = this.NewPage<IndexPage>();
+                page = await this.NewPage<IndexPage>();
             }
             else
             {
                 // get first page of free list
-                page = this.GetPage<IndexPage>(freeIndexPageList);
+                page = await this.GetPage<IndexPage>(freeIndexPageList);
 
                 ENSURE(page.FreeBytes > bytesLength, "this page shout be space enouth for this new node");
                 ENSURE(page.PageListSlot == 0, "this page should be in slot #0");
             }
 
-            return page;
+            return (page, freeIndexPageList);
         }
 
         /// <summary>
         /// Get a new empty page from disk: can be a reused page (from header free list) or file extend
         /// Never re-use page from same transaction
         /// </summary>
-        public T NewPage<T>()
+        public async Task<T> NewPage<T>()
             where T : BasePage
         {
             ENSURE(_collectionPage == null, typeof(T) == typeof(CollectionPage), "if no collection page defined yet, must be first request");
@@ -278,48 +280,44 @@ namespace LiteDB.Engine
             var pageID = 0u;
             PageBuffer buffer;
 
-            // lock header instance to get new page
-            lock (_header)
+            // there is need for _header.Savepoint() because changes here will incremental and will be persist later
+            // if any problem occurs here, rollback will catch this changes
+
+            // try get page from Empty free list
+            if (_header.FreeEmptyPageList != uint.MaxValue)
             {
-                // there is need for _header.Savepoint() because changes here will incremental and will be persist later
-                // if any problem occurs here, rollback will catch this changes
+                var free = await this.GetPage<BasePage>(_header.FreeEmptyPageList);
 
-                // try get page from Empty free list
-                if (_header.FreeEmptyPageList != uint.MaxValue)
-                {
-                    var free = this.GetPage<BasePage>(_header.FreeEmptyPageList);
+                ENSURE(free.PageType == PageType.Empty, "empty page must be defined as empty type");
 
-                    ENSURE(free.PageType == PageType.Empty, "empty page must be defined as empty type");
+                // set header free empty page to next free page
+                _header.FreeEmptyPageList = free.NextPageID;
 
-                    // set header free empty page to next free page
-                    _header.FreeEmptyPageList = free.NextPageID;
+                // clear NextPageID
+                free.NextPageID = uint.MaxValue;
 
-                    // clear NextPageID
-                    free.NextPageID = uint.MaxValue;
+                // get pageID from empty list
+                pageID = free.PageID;
 
-                    // get pageID from empty list
-                    pageID = free.PageID;
-
-                    // get buffer inside re-used page
-                    buffer = free.Buffer;
-                }
-                else
-                {
-                    // checks if not exceeded data file limit size
-                    var newLength = (_header.LastPageID + 1) * PAGE_SIZE;
-
-                    if (newLength > _header.Pragmas.LimitSize) throw new LiteException(0, $"Maximum data file size has been reached: {FileHelper.FormatFileSize(_header.Pragmas.LimitSize)}");
-
-                    // increase LastPageID from shared page
-                    pageID = ++_header.LastPageID;
-
-                    // request for a new buffer
-                    buffer = _reader.NewPage();
-                }
-
-                // retain a list of created pages to, in a rollback situation, back pages to empty list
-                _transPages.NewPages.Add(pageID);
+                // get buffer inside re-used page
+                buffer = free.Buffer;
             }
+            else
+            {
+                // checks if not exceeded data file limit size
+                var newLength = (_header.LastPageID + 1) * PAGE_SIZE;
+
+                if (newLength > _header.Pragmas.LimitSize) throw new LiteException(0, $"Maximum data file size has been reached: {FileHelper.FormatFileSize(_header.Pragmas.LimitSize)}");
+
+                // increase LastPageID from shared page
+                pageID = ++_header.LastPageID;
+
+                // request for a new buffer
+                buffer = _disk.NewPage();
+            }
+
+            // retain a list of created pages to, in a rollback situation, back pages to empty list
+            _transPages.NewPages.Add(pageID);
 
             var page = BasePage.CreatePage<T>(buffer, pageID);
 
@@ -344,7 +342,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Add/Remove a data page from free list slots
         /// </summary>
-        public void AddOrRemoveFreeDataList(DataPage page)
+        public async Task AddOrRemoveFreeDataList(DataPage page)
         {
             var newSlot = DataPage.FreeIndexSlot(page.FreeBytes);
             var initialSlot = page.PageListSlot;
@@ -355,7 +353,7 @@ namespace LiteDB.Engine
             // remove from intial slot
             if (initialSlot != byte.MaxValue)
             {
-                this.RemoveFreeList(page, ref _collectionPage.FreeDataPageList[initialSlot]);
+                _collectionPage.FreeDataPageList[initialSlot] = await this.RemoveFreeList(page, _collectionPage.FreeDataPageList[initialSlot]);
             }
 
             // if there is no items, delete page
@@ -366,7 +364,7 @@ namespace LiteDB.Engine
             else
             {
                 // add into current slot
-                this.AddFreeList(page, ref _collectionPage.FreeDataPageList[newSlot]);
+                _collectionPage.FreeDataPageList[newSlot] = await this.AddFreeList(page, _collectionPage.FreeDataPageList[newSlot]);
 
                 page.PageListSlot = newSlot;
             }
@@ -375,7 +373,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Add/Remove a index page from single free list
         /// </summary>
-        public void AddOrRemoveFreeIndexList(IndexPage page, ref uint startPageID)
+        public async Task<uint> AddOrRemoveFreeIndexList(IndexPage page, uint startPageID)
         {
             var newSlot = IndexPage.FreeIndexSlot(page.FreeBytes);
             var isOnList = page.PageListSlot == 0;
@@ -386,7 +384,7 @@ namespace LiteDB.Engine
             {
                 if (isOnList)
                 {
-                    this.RemoveFreeList(page, ref startPageID);
+                    startPageID = await this.RemoveFreeList(page, startPageID);
                 }
 
                 this.DeletePage(page);
@@ -395,11 +393,11 @@ namespace LiteDB.Engine
             {
                 if (isOnList && !mustKeep)
                 {
-                    this.RemoveFreeList(page, ref startPageID);
+                    startPageID = await this.RemoveFreeList(page, startPageID);
                 }
                 else if (!isOnList && mustKeep)
                 {
-                    this.AddFreeList(page, ref startPageID);
+                    startPageID = await this.AddFreeList(page, startPageID);
                 }
 
                 page.PageListSlot = newSlot;
@@ -407,19 +405,21 @@ namespace LiteDB.Engine
 
                 // otherwise, nothing was changed
             }
+
+            return startPageID;
         }
 
         /// <summary>
         /// Add page into double linked-list (always add as first element)
         /// </summary>
-        private void AddFreeList<T>(T page, ref uint startPageID) where T : BasePage
+        private async Task<uint> AddFreeList<T>(T page, uint startPageID) where T : BasePage
         {
             ENSURE(page.PrevPageID == uint.MaxValue && page.NextPageID == uint.MaxValue, "only non-linked page can be added in linked list");
 
             // fix first/next page
             if (startPageID != uint.MaxValue)
             {
-                var next = this.GetPage<T>(startPageID);
+                var next = await this.GetPage<T>(startPageID);
                 next.PrevPageID = page.PageID;
                 next.IsDirty = true;
             }
@@ -433,17 +433,19 @@ namespace LiteDB.Engine
             startPageID = page.PageID;
 
             _collectionPage.IsDirty = true;
+
+            return startPageID;
         }
 
         /// <summary>
         /// Remove a page from double linked list.
         /// </summary>
-        private void RemoveFreeList<T>(T page, ref uint startPageID) where T : BasePage
+        private async Task<uint> RemoveFreeList<T>(T page, uint startPageID) where T : BasePage
         {
             // fix prev page
             if (page.PrevPageID != uint.MaxValue)
             {
-                var prev = this.GetPage<T>(page.PrevPageID);
+                var prev = await this.GetPage<T>(page.PrevPageID);
                 prev.NextPageID = page.NextPageID;
                 prev.IsDirty = true;
             }
@@ -451,7 +453,7 @@ namespace LiteDB.Engine
             // fix next page
             if (page.NextPageID != uint.MaxValue)
             {
-                var next = this.GetPage<T>(page.NextPageID);
+                var next = await this.GetPage<T>(page.NextPageID);
                 next.PrevPageID = page.PrevPageID;
                 next.IsDirty = true;
             }
@@ -461,14 +463,14 @@ namespace LiteDB.Engine
             {
                 startPageID = page.NextPageID;
 
-                ENSURE(page.NextPageID == uint.MaxValue || this.GetPage<BasePage>(page.NextPageID).PageType != PageType.Empty, "first page on free stack must be non empty page");
-
                 _collectionPage.IsDirty = true;
             }
 
             // clear page pointer (MaxValue = not used)
             page.PrevPageID = page.NextPageID = uint.MaxValue;
             page.IsDirty = true;
+
+            return startPageID;
         }
 
         /// <summary>
@@ -519,76 +521,77 @@ namespace LiteDB.Engine
         /// <summary>
         /// Delete current collection and all pages - this snapshot can't be used after this
         /// </summary>
-        public void DropCollection(Action safePoint)
+        public async Task DropCollection(Func<Task> safePoint)
         {
-            var indexer = new IndexService(this, _header.Pragmas.Collation);
+            throw new NotImplementedException();
+            //var indexer = new IndexService(this, _header.Pragmas.Collation);
 
-            // CollectionPage will be last deleted page (there is no NextPageID from CollectionPage)
-            _transPages.FirstDeletedPageID = _collectionPage.PageID;
-            _transPages.LastDeletedPageID = _collectionPage.PageID;
+            //// CollectionPage will be last deleted page (there is no NextPageID from CollectionPage)
+            //_transPages.FirstDeletedPageID = _collectionPage.PageID;
+            //_transPages.LastDeletedPageID = _collectionPage.PageID;
 
-            // mark collection page as empty
-            _collectionPage.MarkAsEmtpy();
+            //// mark collection page as empty
+            //_collectionPage.MarkAsEmtpy();
 
-            _transPages.DeletedPages = 1;
+            //_transPages.DeletedPages = 1;
 
-            var indexPages = new HashSet<uint>();
+            //var indexPages = new HashSet<uint>();
 
-            // getting all indexes pages from all indexes
-            foreach(var index in _collectionPage.GetCollectionIndexes())
-            {
-                // add head/tail (same page) to be deleted
-                indexPages.Add(index.Head.PageID);
+            //// getting all indexes pages from all indexes
+            //foreach(var index in _collectionPage.GetCollectionIndexes())
+            //{
+            //    // add head/tail (same page) to be deleted
+            //    indexPages.Add(index.Head.PageID);
 
-                foreach (var node in indexer.FindAll(index, Query.Ascending))
-                {
-                    indexPages.Add(node.Page.PageID);
+            //    await foreach (var node in indexer.FindAll(index, Query.Ascending))
+            //    {
+            //        indexPages.Add(node.Page.PageID);
 
-                    safePoint();
-                }
-            }
+            //        safePoint();
+            //    }
+            //}
 
-            // now, mark all pages as deleted
-            foreach (var pageID in indexPages)
-            {
-                var page = this.GetPage<IndexPage>(pageID);
+            //// now, mark all pages as deleted
+            //foreach (var pageID in indexPages)
+            //{
+            //    var page = await this.GetPage<IndexPage>(pageID);
 
-                // mark page as delete and fix deleted page list
-                page.MarkAsEmtpy();
+            //    // mark page as delete and fix deleted page list
+            //    page.MarkAsEmtpy();
 
-                page.NextPageID = _transPages.FirstDeletedPageID;
-                _transPages.FirstDeletedPageID = page.PageID;
+            //    page.NextPageID = _transPages.FirstDeletedPageID;
+            //    _transPages.FirstDeletedPageID = page.PageID;
 
-                _transPages.DeletedPages++;
+            //    _transPages.DeletedPages++;
 
-                safePoint();
-            }
+            //    safePoint();
+            //}
 
-            // adding all data pages
-            foreach (var startPageID in _collectionPage.FreeDataPageList)
-            {
-                var next = startPageID;
+            //// adding all data pages
+            //foreach (var startPageID in _collectionPage.FreeDataPageList)
+            //{
+            //    var next = startPageID;
 
-                while(next != uint.MaxValue)
-                {
-                    var page = this.GetPage<DataPage>(next);
+            //    while(next != uint.MaxValue)
+            //    {
+            //        var page = await this.GetPage<DataPage>(next);
 
-                    next = page.NextPageID;
+            //        next = page.NextPageID;
 
-                    // mark page as delete and fix deleted page list
-                    page.MarkAsEmtpy();
+            //        // mark page as delete and fix deleted page list
+            //        page.MarkAsEmtpy();
 
-                    page.NextPageID = _transPages.FirstDeletedPageID;
-                    _transPages.FirstDeletedPageID = page.PageID;
+            //        page.NextPageID = _transPages.FirstDeletedPageID;
+            //        _transPages.FirstDeletedPageID = page.PageID;
 
-                    _transPages.DeletedPages++;
+            //        _transPages.DeletedPages++;
 
-                    safePoint();
-                }
-            }
+            //        safePoint();
+            //    }
+            //}
 
-            // remove collection name (in header) at commit time
-            _transPages.Commit += (h) => h.DeleteCollection(_collectionName);
+            //// remove collection name (in header) at commit time
+            //_transPages.Commit += (h) => h.DeleteCollection(_collectionName);
         }
 
         #endregion

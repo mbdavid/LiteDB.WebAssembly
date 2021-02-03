@@ -7,7 +7,7 @@ using static LiteDB.Constants;
 namespace LiteDB.Engine
 {
     /// <summary>
-    /// Read multiple array segment as a single linear segment - Forward Only
+    /// Read multiple array segment as a single linear segment - Fordward Only
     /// </summary>
     internal class BufferReader : IDisposable
     {
@@ -55,15 +55,15 @@ namespace LiteDB.Engine
         #region Basic Read
 
         /// <summary>
-        /// Move forward in current segment. If array segment finishes, open next segment
-        /// Returns true if moved to another segment - returns false if continues in the same segment
+        /// Move fordward in current segment. If array segment finish, open next segment
+        /// Returns true if move to another segment - returns false if continue in same segment
         /// </summary>
-        private bool MoveForward(int count)
+        private bool MoveFordward(int count)
         {
-            // do not move forward if source finish
+            // do not move fordward if source finish
             if (_isEOF) return false;
 
-            ENSURE(_currentPosition + count <= _current.Count, "forward is only for current segment");
+            ENSURE(_currentPosition + count <= _current.Count, "fordward are only for current segment");
 
             _currentPosition += count;
             _position += count;
@@ -112,7 +112,7 @@ namespace LiteDB.Engine
                 bufferPosition += bytesToCopy;
 
                 // move position in current segment (and go to next segment if finish)
-                this.MoveForward(bytesToCopy);
+                this.MoveFordward(bytesToCopy);
 
                 if (_isEOF) break;
             }
@@ -156,7 +156,7 @@ namespace LiteDB.Engine
             {
                 value = Encoding.UTF8.GetString(_current.Array, _current.Offset + _currentPosition, count);
 
-                this.MoveForward(count);
+                this.MoveFordward(count);
             }
             else
             {
@@ -192,17 +192,30 @@ namespace LiteDB.Engine
 
                     mem.Write(_current.Array, _current.Offset + _currentPosition, initialCount);
 
-                    this.MoveForward(initialCount);
+                    this.MoveFordward(initialCount);
 
                     // and go to next segment
-                    while (_current[_currentPosition] != 0x00 && _isEOF == false)
+                    if (!_isEOF)
                     {
-                        mem.WriteByte(_current[_currentPosition]);
+                        while (_current[_currentPosition] != 0x00)
+                        {
+                            if (this.MoveFordward(1))
+                            {
+                                // write all segment into strem (did not found \0 yet)
+                                mem.Write(_current.Array, _current.Offset, _current.Count);
+                            }
 
-                        this.MoveForward(1);
+                            if (_isEOF) break;
+                        }
+
+                        // add last segment (if eof already added in while)
+                        if (!_isEOF)
+                        {
+                            mem.Write(_current.Array, _current.Offset, _currentPosition);
+                        }
+
+                        this.MoveFordward(1); // +1 to '\0'
                     }
-
-                    this.MoveForward(1); // +1 to '\0'
 
                     return Encoding.UTF8.GetString(mem.ToArray());
                 }
@@ -221,7 +234,7 @@ namespace LiteDB.Engine
                 if (_current[pos] == 0x00)
                 {
                     value = Encoding.UTF8.GetString(_current.Array, _current.Offset + _currentPosition, count);
-                    this.MoveForward(count + 1); // +1 means '\0'	
+                    this.MoveFordward(count + 1); // +1 means '\0'	
                     return true;
                 }
                 else
@@ -247,7 +260,7 @@ namespace LiteDB.Engine
             {
                 value = convert(_current.Array, _current.Offset + _currentPosition);
 
-                this.MoveForward(size);
+                this.MoveFordward(size);
             }
             else
             {
@@ -302,7 +315,7 @@ namespace LiteDB.Engine
             {
                 value = _current.ReadGuid(_currentPosition);
 
-                this.MoveForward(16);
+                this.MoveFordward(16);
             }
             else
             {
@@ -324,7 +337,7 @@ namespace LiteDB.Engine
             {
                 value = new ObjectId(_current.Array, _current.Offset + _currentPosition);
 
-                this.MoveForward(12);
+                this.MoveFordward(12);
             }
             else
             {
@@ -346,7 +359,7 @@ namespace LiteDB.Engine
         public bool ReadBoolean()
         {
             var value = _current[_currentPosition] != 0;
-            this.MoveForward(1);
+            this.MoveFordward(1);
             return value;
         }
 
@@ -356,7 +369,7 @@ namespace LiteDB.Engine
         public byte ReadByte()
         {
             var value = _current[_currentPosition];
-            this.MoveForward(1);
+            this.MoveFordward(1);
             return value;
         }
 
@@ -444,7 +457,7 @@ namespace LiteDB.Engine
                 }
             }
 
-            this.MoveForward(1); // skip \0
+            this.MoveFordward(1); // skip \0
 
             return doc;
         }
@@ -464,7 +477,7 @@ namespace LiteDB.Engine
                 arr.Add(value);
             }
 
-            this.MoveForward(1); // skip \0
+            this.MoveFordward(1); // skip \0
 
             return arr;
         }
@@ -508,7 +521,7 @@ namespace LiteDB.Engine
             {
                 var length = this.ReadInt32();
                 var value = this.ReadString(length - 1);
-                this.MoveForward(1); // read '\0'
+                this.MoveFordward(1); // read '\0'
                 return value;
             }
             else if (type == 0x03) // Document

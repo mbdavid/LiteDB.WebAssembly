@@ -61,7 +61,7 @@ namespace LiteDB.Engine
                     engine.RebuildContent(reader);
 
                     // after rebuild, copy log bytes into data file
-                    engine.Checkpoint();
+                    engine.CheckpointAsync();
 
                     // re-enable auto-checkpoint pragma
                     engine.Pragma(Pragmas.CHECKPOINT, 1000);

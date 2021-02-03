@@ -1,33 +1,38 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace LiteDB.Engine
 {
     public interface ILiteEngine : IDisposable
     {
-        int Checkpoint();
-        long Rebuild(RebuildOptions options);
+        Task OpenAsync();
 
-        bool BeginTrans();
-        bool Commit();
-        bool Rollback();
+        Task<int> CheckpointAsync();
 
-        IBsonDataReader Query(string collection, Query query);
+        Task<bool> BeginTransAsync();
+        Task<bool> CommitAsync();
+        Task<bool> RollbackAsync();
 
-        int Insert(string collection, IEnumerable<BsonDocument> docs, BsonAutoId autoId);
-        int Update(string collection, IEnumerable<BsonDocument> docs);
-        int UpdateMany(string collection, BsonExpression transform, BsonExpression predicate);
-        int Upsert(string collection, IEnumerable<BsonDocument> docs, BsonAutoId autoId);
-        int Delete(string collection, IEnumerable<BsonValue> ids);
-        int DeleteMany(string collection, BsonExpression predicate);
+        IBsonDataReader QueryAsync(string collection, Query query);
 
-        bool DropCollection(string name);
-        bool RenameCollection(string name, string newName);
+        Task<int> InsertAsync(string collection, IEnumerable<BsonDocument> docs, BsonAutoId autoId);
 
-        bool EnsureIndex(string collection, string name, BsonExpression expression, bool unique);
-        bool DropIndex(string collection, string name);
+        Task<int> UpdateAsync(string collection, IEnumerable<BsonDocument> docs);
+        Task<int> UpdateManyAsync(string collection, BsonExpression transform, BsonExpression predicate);
 
-        BsonValue Pragma(string name);
-        bool Pragma(string name, BsonValue value);
+        Task<int> UpsertAsync(string collection, IEnumerable<BsonDocument> docs, BsonAutoId autoId);
+
+        Task<int> DeleteAsync(string collection, IEnumerable<BsonValue> ids);
+        Task<int> DeleteManyAsync(string collection, BsonExpression predicate);
+
+        Task<bool> DropCollectionAsync(string name);
+        Task<bool> RenameCollectionAsync(string name, string newName);
+
+        Task<bool> EnsureIndexAsync(string collection, string name, BsonExpression expression, bool unique);
+        Task<bool> DropIndexAsync(string collection, string name);
+
+        Task<BsonValue> Pragma(string name);
+        Task<bool> PragmaAsync(string name, BsonValue value);
     }
 }

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -26,7 +28,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Insert BsonDocument into new data pages
         /// </summary>
-        public PageAddress Insert(BsonDocument doc)
+        public async Task<PageAddress> Insert(BsonDocument doc)
         {
             var bytesLeft = doc.GetBytesCount(true);
 
@@ -34,7 +36,7 @@ namespace LiteDB.Engine
 
             var firstBlock = PageAddress.Empty;
 
-            IEnumerable<BufferSlice> source()
+            async IAsyncEnumerable<BufferSlice> source()
             {
                 var blockIndex = 0;
                 DataBlock lastBlock = null;
@@ -42,7 +44,7 @@ namespace LiteDB.Engine
                 while (bytesLeft > 0)
                 {
                     var bytesToCopy = Math.Min(bytesLeft, MAX_DATA_BYTES_PER_PAGE);
-                    var dataPage = _snapshot.GetFreeDataPage(bytesToCopy + DataBlock.DATA_BLOCK_FIXED_SIZE);
+                    var dataPage = await _snapshot.GetFreeDataPage(bytesToCopy + DataBlock.DATA_BLOCK_FIXED_SIZE);
                     var dataBlock = dataPage.InsertBlock(bytesToCopy, blockIndex++ > 0);
 
                     if (lastBlock != null)
@@ -52,7 +54,7 @@ namespace LiteDB.Engine
 
                     if (firstBlock.IsEmpty) firstBlock = dataBlock.Position;
 
-                    _snapshot.AddOrRemoveFreeDataList(dataPage);
+                    await _snapshot.AddOrRemoveFreeDataList(dataPage);
 
                     yield return dataBlock.Buffer;
 
@@ -64,11 +66,11 @@ namespace LiteDB.Engine
 
             // consume all source bytes to write BsonDocument direct into PageBuffer
             // must be fastest as possible
-            using (var w = new BufferWriter(source()))
+            await using (var writer = await BufferWriterAsync.CreateAsync(source()))
             {
                 // already bytes count calculate at method start
-                w.WriteDocument(doc, false);
-                w.Consume();
+                await writer.WriteDocument(doc, false);
+                await writer.Consume();
             }
 
             return firstBlock;
@@ -77,7 +79,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Update document using same page position as reference
         /// </summary>
-        public void Update(CollectionPage col, PageAddress blockAddress, BsonDocument doc)
+        public async Task Update(CollectionPage col, PageAddress blockAddress, BsonDocument doc)
         {
             var bytesLeft = doc.GetBytesCount(true);
 
@@ -86,7 +88,7 @@ namespace LiteDB.Engine
             DataBlock lastBlock = null;
             var updateAddress = blockAddress;
 
-            IEnumerable <BufferSlice> source()
+            async IAsyncEnumerable <BufferSlice> source()
             {
                 var bytesToCopy = 0;
 
@@ -95,7 +97,7 @@ namespace LiteDB.Engine
                     // if last block contains new block sequence, continue updating
                     if (updateAddress.IsEmpty == false)
                     {
-                        var dataPage = _snapshot.GetPage<DataPage>(updateAddress.PageID);
+                        var dataPage = await _snapshot.GetPage<DataPage>(updateAddress.PageID);
                         var currentBlock = dataPage.GetBlock(updateAddress.Index);
 
                         // try get full page size content (do not add DATA_BLOCK_FIXED_SIZE because will be added in UpdateBlock)
@@ -103,7 +105,7 @@ namespace LiteDB.Engine
 
                         var updateBlock = dataPage.UpdateBlock(currentBlock, bytesToCopy);
 
-                        _snapshot.AddOrRemoveFreeDataList(dataPage);
+                        await _snapshot.AddOrRemoveFreeDataList(dataPage);
 
                         yield return updateBlock.Buffer;
 
@@ -115,7 +117,7 @@ namespace LiteDB.Engine
                     else
                     {
                         bytesToCopy = Math.Min(bytesLeft, MAX_DATA_BYTES_PER_PAGE);
-                        var dataPage = _snapshot.GetFreeDataPage(bytesToCopy + DataBlock.DATA_BLOCK_FIXED_SIZE);
+                        var dataPage = await _snapshot.GetFreeDataPage(bytesToCopy + DataBlock.DATA_BLOCK_FIXED_SIZE);
                         var insertBlock = dataPage.InsertBlock(bytesToCopy, true);
 
                         if (lastBlock != null)
@@ -123,7 +125,7 @@ namespace LiteDB.Engine
                             lastBlock.SetNextBlock(insertBlock.Position);
                         }
 
-                        _snapshot.AddOrRemoveFreeDataList(dataPage);
+                        await _snapshot.AddOrRemoveFreeDataList(dataPage);
 
                         yield return insertBlock.Buffer;
 
@@ -140,28 +142,27 @@ namespace LiteDB.Engine
 
                     lastBlock.SetNextBlock(PageAddress.Empty);
 
-                    this.Delete(nextBlockAddress);
+                    await this.Delete(nextBlockAddress);
                 }
             }
 
             // consume all source bytes to write BsonDocument direct into PageBuffer
-            // must be fastest as possible
-            using (var w = new BufferWriter(source()))
+            await using (var writer = await BufferWriterAsync.CreateAsync(source()))
             {
                 // already bytes count calculate at method start
-                w.WriteDocument(doc, false);
-                w.Consume();
+                await writer.WriteDocument(doc, false);
+                await writer.Consume();
             }
         }
 
         /// <summary>
         /// Get all buffer slices that address block contains. Need use BufferReader to read document
         /// </summary>
-        public IEnumerable<BufferSlice> Read(PageAddress address)
+        public async IAsyncEnumerable<BufferSlice> Read(PageAddress address)
         {
             while (address != PageAddress.Empty)
             {
-                var dataPage = _snapshot.GetPage<DataPage>(address.PageID);
+                var dataPage = await _snapshot.GetPage<DataPage>(address.PageID);
 
                 var block = dataPage.GetBlock(address.Index);
 
@@ -174,19 +175,19 @@ namespace LiteDB.Engine
         /// <summary>
         /// Delete all datablock that contains a document (can use multiples data blocks)
         /// </summary>
-        public void Delete(PageAddress blockAddress)
+        public async Task Delete(PageAddress blockAddress)
         {
             // delete all document blocks
             while(blockAddress != PageAddress.Empty)
             {
-                var page = _snapshot.GetPage<DataPage>(blockAddress.PageID);
+                var page = await _snapshot.GetPage<DataPage>(blockAddress.PageID);
                 var block = page.GetBlock(blockAddress.Index);
 
                 // delete block inside page
                 page.DeleteBlock(blockAddress.Index);
 
                 // fix page empty list (or delete page)
-                _snapshot.AddOrRemoveFreeDataList(page);
+                await _snapshot.AddOrRemoveFreeDataList(page);
 
                 blockAddress = block.NextBlock;
             }

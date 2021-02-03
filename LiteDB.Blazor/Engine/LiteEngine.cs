@@ -20,7 +20,7 @@ namespace LiteDB.Engine
     {
         #region Services instances
 
-        private LockService _locker;
+        private SemaphoreSlim _locker = new SemaphoreSlim(1, 1);
 
         private DiskService _disk;
 
@@ -28,12 +28,9 @@ namespace LiteDB.Engine
 
         private HeaderPage _header;
 
-        private TransactionMonitor _monitor;
+        private readonly Stream _stream;
 
-        private SortDisk _sortDisk;
-
-        // immutable settings
-        private readonly EngineSettings _settings;
+        private readonly Collation _collation;
 
         private bool _disposed = false;
 
@@ -45,24 +42,17 @@ namespace LiteDB.Engine
         /// Create new LiteEngine using in-memory database
         /// </summary>
         public LiteEngine()
-            : this(new EngineSettings { DataStream = new MemoryStream() })
+            : this(new MemoryStream())
         {
         }
 
         /// <summary>
-        /// Create new LiteEngine using datafile filename
+        /// Create new LiteEngine instance using custom Stream
         /// </summary>
-        public LiteEngine(string filename)
-            : this (new EngineSettings { Filename = filename })
+        public LiteEngine(Stream stream, Collation collation = null)
         {
-        }
-
-        /// <summary>
-        /// Use full engine settings to create new LiteEngine instance
-        /// </summary>
-        public LiteEngine(EngineSettings settings)
-        {
-            _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            _stream = stream;
+            _collation = collation ?? Collation.Default;
         }
 
         /// <summary>
@@ -70,36 +60,27 @@ namespace LiteDB.Engine
         /// </summary>
         public async Task OpenAsync()
         { 
-            LOG($"start initializing{(_settings.ReadOnly ? " (readonly)" : "")}", "ENGINE");
+            LOG("start initializing", "ENGINE");
 
             try
             {
                 // initialize disk service (will create database if needed)
-                _disk = new DiskService(_settings, MEMORY_SEGMENT_SIZES);
+                _disk = await DiskService.CreateAsync(_stream, _collation, MEMORY_SEGMENT_SIZES, MAX_EXTENDS);
 
                 // get header page from disk service
                 _header = _disk.Header;
                 
                 // test for same collation
-                if (_settings.Collation != null && _settings.Collation.ToString() != _header.Pragmas.Collation.ToString())
+                if (_collation.ToString() != _header.Pragmas.Collation.ToString())
                 {
                     throw new LiteException(0, $"Datafile collation '{_header.Pragmas.Collation}' is different from engine settings. Use Rebuild database to change collation.");
                 }
 
-                // initialize locker service
-                _locker = new LockService(_header.Pragmas);
-
                 // initialize wal-index service
-                _walIndex = new WalIndexService(_disk, _locker);
+                _walIndex = new WalIndexService(_disk);
 
                 // restore wal index references, if exists
                 _walIndex.RestoreIndex(_header);
-
-                // initialize sort temp disk
-                _sortDisk = new SortDisk(_settings.CreateTempFactory(), CONTAINER_SORT_SIZE, _header.Pragmas);
-
-                // initialize transaction monitor as last service
-                _monitor = new TransactionMonitor(_header, _settings, _locker, _disk, _walIndex);
 
                 // register system collections
                 this.InitializeSystemCollections();
@@ -118,15 +99,10 @@ namespace LiteDB.Engine
 
         #endregion
 
-#if DEBUG
-        // exposes for unit tests
-        internal TransactionMonitor GetMonitor() => _monitor;
-#endif
-
         /// <summary>
         /// Run checkpoint command to copy log file into data file
         /// </summary>
-        public int Checkpoint() => _walIndex.Checkpoint(false, true);
+        public int CheckpointAsync() => _walIndex.Checkpoint(false, true);
 
         public void Dispose()
         {
@@ -142,10 +118,7 @@ namespace LiteDB.Engine
 
         /// <summary>
         /// Shutdown process:
-        /// - Stop any new transaction
-        /// - Stop operation loops over database (throw in SafePoint)
-        /// - Wait for writer queue
-        /// - Close disks
+        /// - [[[[DESCRIBE]]]]
         /// </summary>
         protected virtual void Dispose(bool disposing)
         {
@@ -155,26 +128,19 @@ namespace LiteDB.Engine
 
             if (disposing)
             {
-                // stop running all transactions
-                _monitor?.Dispose();
-
                 // do a soft checkpoint (only if exclusive lock is possible)
-                if (_header?.Pragmas.Checkpoint > 0 && _settings.ReadOnly == false) _walIndex?.Checkpoint(true, true);
+                if (_header?.Pragmas.Checkpoint > 0) _walIndex?.Checkpoint(true, true);
 
                 // close all disk streams (and delete log if empty)
                 _disk?.Dispose();
 
-                // delete sort temp file
-                _sortDisk?.Dispose();
-
                 // dispose lockers
-                _locker?.Dispose();
+                _locker.Dispose();
             }
 
             LOG("engine disposed", "ENGINE");
 
             _disposed = true;
         }
-
     }
 }

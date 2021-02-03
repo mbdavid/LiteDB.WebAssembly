@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -12,14 +14,14 @@ namespace LiteDB.Engine
         /// <summary>
         /// Insert all documents in collection. If document has no _id, use AutoId generation.
         /// </summary>
-        public int Insert(string collection, IEnumerable<BsonDocument> docs, BsonAutoId autoId)
+        public async Task<int> InsertAsync(string collection, IEnumerable<BsonDocument> docs, BsonAutoId autoId)
         {
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
             if (docs == null) throw new ArgumentNullException(nameof(docs));
 
-            return this.AutoTransaction(transaction =>
+            return await this.AutoTransaction(async transaction =>
             {
-                var snapshot = transaction.CreateSnapshot(LockMode.Write, collection, true);
+                var snapshot = await transaction.CreateSnapshot(LockMode.Write, collection, true);
                 var count = 0;
                 var indexer = new IndexService(snapshot, _header.Pragmas.Collation);
                 var data = new DataService(snapshot);
@@ -28,9 +30,9 @@ namespace LiteDB.Engine
 
                 foreach (var doc in docs)
                 {
-                    transaction.Safepoint();
+                    await transaction.Safepoint();
 
-                    this.InsertDocument(snapshot, doc, autoId, indexer, data);
+                    await this.InsertDocumentAsync(snapshot, doc, autoId, indexer, data);
 
                     count++;
                 }
@@ -42,7 +44,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Internal implementation of insert a document
         /// </summary>
-        private void InsertDocument(Snapshot snapshot, BsonDocument doc, BsonAutoId autoId, IndexService indexer, DataService data)
+        private async Task InsertDocumentAsync(Snapshot snapshot, BsonDocument doc, BsonAutoId autoId, IndexService indexer, DataService data)
         {
             // if no _id, use AutoId
             if (!doc.TryGetValue("_id", out var id))
@@ -65,7 +67,7 @@ namespace LiteDB.Engine
             }
 
             // storage in data pages - returns dataBlock address
-            var dataBlock = data.Insert(doc);
+            var dataBlock = await data.Insert(doc);
 
             IndexNode last = null;
 
@@ -80,7 +82,7 @@ namespace LiteDB.Engine
                 foreach(var key in keys)
                 {
                     // insert node
-                    var node = indexer.AddNode(index, key, dataBlock, last);
+                    var node = await indexer.AddNode(index, key, dataBlock, last);
 
                     last = node;
                 }

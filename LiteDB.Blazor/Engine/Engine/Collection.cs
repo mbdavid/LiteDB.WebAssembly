@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -19,16 +21,16 @@ namespace LiteDB.Engine
         /// <summary>
         /// Drop collection including all documents, indexes and extended pages (do not support transactions)
         /// </summary>
-        public bool DropCollection(string name)
+        public async Task<bool> DropCollectionAsync(string name)
         {
             if (name.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(name));
 
             // drop collection is possible only in exclusive transaction for this
-            if (_locker.IsInTransaction) throw LiteException.AlreadyExistsTransaction();
+            if (_transaction != null) throw LiteException.AlreadyExistsTransaction();
 
-            return this.AutoTransaction(transaction =>
+            return await this.AutoTransaction(async transaction =>
             {
-                var snapshot = transaction.CreateSnapshot(LockMode.Write, name, false);
+                var snapshot = await transaction.CreateSnapshot(LockMode.Write, name, false);
 
                 // if collection do not exist, just exit
                 if (snapshot.CollectionPage == null) return false;
@@ -36,7 +38,8 @@ namespace LiteDB.Engine
                 LOG($"drop collection `{name}`", "COMMAND");
 
                 // call drop collection service
-                snapshot.DropCollection(transaction.Safepoint);
+                //await snapshot.DropCollection(transaction.Safepoint);
+                throw new NotImplementedException();
 
                 // remove sequence number (if exists)
                 _sequences.TryRemove(name, out var dummy);
@@ -48,13 +51,13 @@ namespace LiteDB.Engine
         /// <summary>
         /// Rename a collection (do not support transactions)
         /// </summary>
-        public bool RenameCollection(string collection, string newName)
+        public async Task<bool> RenameCollectionAsync(string collection, string newName)
         {
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
             if (newName.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(newName));
 
             // rename collection is possible only in exclusive transaction for this
-            if (_locker.IsInTransaction) throw LiteException.AlreadyExistsTransaction();
+            if (_transaction != null) throw LiteException.AlreadyExistsTransaction();
 
             // check for collection name
             if (collection.Equals(newName, StringComparison.OrdinalIgnoreCase)) throw LiteException.InvalidCollectionName(newName, "New name must be different from current name");
@@ -62,13 +65,10 @@ namespace LiteDB.Engine
             // checks if newName are compatible
             CollectionService.CheckName(newName, _header);
 
-            // rename collection is possible only in exclusive transaction for this
-            if (_locker.IsInTransaction) throw LiteException.AlreadyExistsTransaction();
-
-            return this.AutoTransaction(transaction =>
+            return await this.AutoTransaction(async transaction =>
             {
-                var currentSnapshot = transaction.CreateSnapshot(LockMode.Write, collection, false);
-                var newSnapshot = transaction.CreateSnapshot(LockMode.Write, newName, false);
+                var currentSnapshot = await transaction.CreateSnapshot(LockMode.Write, collection, false);
+                var newSnapshot = await transaction.CreateSnapshot(LockMode.Write, newName, false);
 
                 if (currentSnapshot.CollectionPage == null) return false;
 

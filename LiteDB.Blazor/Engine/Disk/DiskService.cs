@@ -17,93 +17,18 @@ namespace LiteDB.Engine
     internal class DiskService : IDisposable
     {
         private readonly MemoryCache _cache;
-        private DiskWriterQueue _queue;
 
-        private IStreamFactory _streamFactory;
-
-        private StreamPool _streamPool;
-
+        private Stream _stream;
+        private Collation _collation;
         private HeaderPage _header;
 
         private long _logStartPosition;
         private long _logEndPosition;
 
-        public DiskService(EngineSettings settings, int[] memorySegmentSizes)
-        {
-            _cache = new MemoryCache(memorySegmentSizes);
-
-            // get new stream factory based on settings
-            _streamFactory = settings.CreateDataFactory();
-
-            // create stream pool
-            _streamPool = new StreamPool(_streamFactory, settings.ReadOnly);
-
-            // create async writer queue for log file
-            _queue = new DiskWriterQueue(_streamPool.Writer);
-
-            // checks if is a new file
-            var isNew = settings.ReadOnly == false && _streamPool.Writer.Length == 0;
-
-            // create new database if not exist yet
-            if (isNew)
-            {
-                LOG($"creating new database: '{Path.GetFileName(_streamFactory.Name)}'", "DISK");
-
-                _header = this.Initialize(_streamPool.Writer, settings.Collation, settings.InitialSize);
-            }
-            else
-            {
-                // load header page from position 0 from file
-                var stream = _streamPool.Rent();
-                var buffer = new PageBuffer(new byte[PAGE_SIZE], 0, 0) { Position = 0 };
-
-                try
-                {
-                    stream.Position = 0;
-                    stream.Read(buffer.Array, 0, PAGE_SIZE);
-
-                    // if first byte are 1 this datafile are encrypted but has do defined password to open
-                    if (buffer[0] == 1) throw new LiteException(0, "This data file is encrypted and needs a password to open");
-
-                    _header = new HeaderPage(buffer);
-
-                    _streamPool.Return(stream);
-                }
-                catch
-                {
-                    // return to pool before dispose 
-                    _streamPool.Return(stream);
-
-                    this.Dispose();
-
-                    throw;
-                }
-            }
-
-            // define start/end position for log content
-            _logStartPosition = (_header.LastPageID + 1) * PAGE_SIZE;
-            _logEndPosition = _logStartPosition; // will be updated by RestoreIndex
-        }
-
-        /// <summary>
-        /// Get async queue writer
-        /// </summary>
-        public DiskWriterQueue Queue => _queue;
-
         /// <summary>
         /// Get memory cache instance
         /// </summary>
         public MemoryCache Cache => _cache;
-
-        /// <summary>
-        /// Get writer Stream single instance
-        /// </summary>
-        public Stream Writer => _streamPool.Writer;
-
-        /// <summary>
-        /// Get stream factory instance;
-        /// </summary>
-        public IStreamFactory Factory => _streamFactory;
 
         /// <summary>
         /// Get header page single database instance
@@ -125,19 +50,68 @@ namespace LiteDB.Engine
         /// </summary>
         public long LogEndPosition { get => _logEndPosition; set => _logEndPosition = value; }
 
+        #region Async Constructor
+
+        /// <summary>
+        /// Async constructor
+        /// </summary>
+        public async static Task<DiskService> CreateAsync(Stream stream, Collation collation, int[] memorySegmentSizes, int maxExtends)
+        {
+            var disk = new DiskService(stream, collation, memorySegmentSizes, maxExtends);
+            await disk.InitializeAsync();
+            return disk;
+        }
+
+        private DiskService(Stream stream, Collation collation, int[] memorySegmentSizes, int maxExtends)
+        {
+            _stream = stream;
+            _collation = collation;
+
+            _cache = new MemoryCache(stream, memorySegmentSizes, maxExtends);
+        }
+
+        private async Task InitializeAsync()
+        { 
+            // checks if is a new file
+            var isNew = _stream.Length == 0;
+
+            // create new database if not exist yet
+            if (isNew)
+            {
+                LOG($"creating new database", "DISK");
+
+                _header = await CreateDatabase(_stream, _collation);
+            }
+            else
+            {
+                // load header page from position 0 from file
+                var buffer = new PageBuffer(new byte[PAGE_SIZE], 0, 0) { Position = 0 };
+
+                _stream.Position = 0;
+
+                await _stream.ReadAsync(buffer.Array, 0, PAGE_SIZE);
+
+                _header = new HeaderPage(buffer);
+            }
+
+            // define start/end position for log content
+            _logStartPosition = (_header.LastPageID + 1) * PAGE_SIZE;
+            _logEndPosition = _logStartPosition; // will be updated by RestoreIndex
+        }
+
+        #endregion
+
         /// <summary>
         /// Create a new empty database (use synced mode)
         /// </summary>
-        private HeaderPage Initialize(Stream stream, Collation collation, long initialSize)
+        private static async Task<HeaderPage> CreateDatabase(Stream stream, Collation collation)
         {
             var buffer = new PageBuffer(new byte[PAGE_SIZE], 0, 0) { Position = 0 };
             var header = new HeaderPage(buffer, 0);
 
-            var pages = initialSize == 0 ? 0 : (int)(initialSize / PAGE_SIZE) - 1;
-
             // update last page ID (when initialSize > 0)
-            header.LastPageID = (uint)pages;
-            header.FreeEmptyPageList = pages == 0 ? uint.MaxValue : 1u;
+            header.LastPageID = 0;
+            header.FreeEmptyPageList = uint.MaxValue;
 
             // update collation
             header.Pragmas.Set(Pragmas.COLLATION, (collation ?? Collation.Default).ToString(), false);
@@ -145,47 +119,56 @@ namespace LiteDB.Engine
             // update buffer
             header.UpdateBuffer();
 
-            stream.Write(buffer.Array, buffer.Offset, PAGE_SIZE);
+            // write async header page
+            await stream.WriteAsync(buffer.Array, buffer.Offset, PAGE_SIZE);
 
-            // create empty pages if defined initial size
-            if (pages > 0)
-            {
-                for (uint p = 1; p <= pages; p++)
-                {
-                    var empty = new BasePage(new PageBuffer(new byte[PAGE_SIZE], 0, 0), p, PageType.Empty);
-
-                    empty.NextPageID = p < pages ? p + 1 : uint.MaxValue;
-
-                    empty.UpdateBuffer();
-
-                    stream.Write(empty.Buffer.Array, 0, PAGE_SIZE);
-                }
-            }
-
-            stream.FlushToDisk();
+            await stream.FlushAsync();
 
             return header;
         }
 
-        /// <summary>
-        /// Get a new instance for read data/log pages. This instance are not thread-safe - must request 1 per thread (used in Transaction)
-        /// </summary>
-        public DiskReader GetReader()
+        public async Task<PageBuffer> ReadPage(long position, bool writable)
         {
-            return new DiskReader(_cache, _streamPool);
+            ENSURE(position % PAGE_SIZE == 0, "invalid page position");
+
+            var page = writable ?
+                await _cache.GetWritablePage(position) :
+                await _cache.GetReadablePage(position);
+
+            return page;
         }
 
         /// <summary>
-        /// Write pages inside file origin using async queue - returns how many pages are inside "pages"
+        /// Read bytes from stream into buffer slice
         /// </summary>
-        public int WriteAsync(IEnumerable<PageBuffer> pages)
+        private async Task ReadStream(Stream stream, long position, BufferSlice buffer)
+        {
+            // can't test "Length" from out-to-date stream
+            // ENSURE(stream.Length <= position - PAGE_SIZE, "can't be read from beyond file length");
+            stream.Position = position;
+
+            await stream.ReadAsync(buffer.Array, buffer.Offset, buffer.Count);
+
+            DEBUG(buffer.All(0) == false, "check if are not reading out of file length");
+        }
+
+        /// <summary>
+        /// Request for a empty, writable non-linked page (same as DiskService.NewPage)
+        /// </summary>
+        public PageBuffer NewPage()
+        {
+            return _cache.NewPage();
+        }
+
+        /// <summary>
+        /// Write log pages inside stream
+        /// </summary>
+        public async Task<int> WriteLogPages(IEnumerable<PageBuffer> pages)
         {
             var count = 0;
 
             foreach (var page in pages)
             {
-                ENSURE(page.ShareCounter == BUFFER_WRITABLE, "to enqueue page, page must be writable");
-
                 var dataPosition = BasePage.GetPagePosition(page.ReadInt32(BasePage.P_PAGE_ID));
 
                 do
@@ -199,109 +182,80 @@ namespace LiteDB.Engine
                 // mark this page as readable and get cached paged to enqueue
                 var readable = _cache.MoveToReadable(page);
 
-                _queue.EnqueuePage(readable);
+                _stream.Position = page.Position;
+
+                await _stream.WriteAsync(page.Array, page.Offset, PAGE_SIZE);
 
                 count++;
             }
 
-            _queue.Run();
-
             return count;
         }
-
-        #region Sync Read/Write operations
 
         /// <summary>
         /// Read all log from current log position to end of file. 
         /// This operation are sync and should not be run with any page on queue
         /// Use fullLogArea to read file to end
         /// </summary>
-        public IEnumerable<PageBuffer> ReadLog(bool fullLogArea)
+        public async IAsyncEnumerable<PageBuffer> ReadLog(bool fullLogArea)
         {
-            ENSURE(_queue.Length == 0, "no pages on queue before read sync log");
-
             // do not use MemoryCache factory - reuse same buffer array (one page per time)
             var buffer = new byte[PAGE_SIZE];
-            var stream = _streamPool.Rent();
 
-            try
+            // get file length
+            var endPosition = fullLogArea ? _stream.Length : _logEndPosition;
+
+            // set to first log page position
+            _stream.Position = _logStartPosition;
+
+            while (_stream.Position < endPosition)
             {
-                // get file length
-                var endPosition = fullLogArea ? _streamFactory.GetLength() : _logEndPosition;
+                var position = _stream.Position;
 
-                // set to first log page position
-                stream.Position = _logStartPosition;
+                await _stream.ReadAsync(buffer, 0, PAGE_SIZE);
 
-                while (stream.Position < endPosition)
+                yield return new PageBuffer(buffer, 0, 0)
                 {
-                    var position = stream.Position;
-
-                    stream.Read(buffer, 0, PAGE_SIZE);
-
-                    yield return new PageBuffer(buffer, 0, 0)
-                    {
-                        Position = position,
-                        ShareCounter = 0
-                    };
-                }
-            }
-            finally
-            {
-                _streamPool.Return(stream);
+                    Position = position
+                };
             }
         }
 
         /// <summary>
         /// Read all pages inside datafile - do not consider in-cache only pages. Returns both Data and Log pages
         /// </summary>
-        public IEnumerable<PageBuffer> ReadFull()
+        public async IAsyncEnumerable<PageBuffer> ReadFull()
         {
             var buffer = new byte[PAGE_SIZE];
-            var stream = _streamPool.Rent();
 
-            try
+            _stream.Position = 0;
+
+            while (_stream.Position < _stream.Length)
             {
-                // get file length
-                var length = _streamFactory.GetLength();
+                var position = _stream.Position;
 
-                stream.Position = 0;
+                await _stream.ReadAsync(buffer, 0, PAGE_SIZE);
 
-                while (stream.Position < length)
+                yield return new PageBuffer(buffer, 0, 0)
                 {
-                    var position = stream.Position;
-
-                    stream.Read(buffer, 0, PAGE_SIZE);
-
-                    yield return new PageBuffer(buffer, 0, 0)
-                    {
-                        Position = position,
-                        ShareCounter = 0
-                    };
-                }
-            }
-            finally
-            {
-                _streamPool.Return(stream);
+                    Position = position
+                };
             }
         }
 
         /// <summary>
         /// Write pages DIRECT in disk with NO queue. Used in CHECKPOINT only
         /// </summary>
-        public void Write(IEnumerable<PageBuffer> pages)
+        public async Task WriteDataPages(IAsyncEnumerable<PageBuffer> pages)
         {
-            var stream = _streamPool.Writer;
-
-            foreach (var page in pages)
+            await foreach (var page in pages)
             {
-                ENSURE(page.ShareCounter == 0, "this page can't be shared to use sync operation - do not use cached pages");
+                _stream.Position = page.Position;
 
-                stream.Position = page.Position;
-
-                stream.Write(page.Array, page.Offset, PAGE_SIZE);
+                await _stream.WriteAsync(page.Array, page.Offset, PAGE_SIZE);
             }
 
-            stream.FlushToDisk();
+            await _stream.FlushAsync();
         }
 
         /// <summary>
@@ -313,109 +267,12 @@ namespace LiteDB.Engine
 
             if (crop)
             {
-                FileHelper.TrySetLength(_streamPool.Writer, _logStartPosition);
+                _stream.SetLength(_logStartPosition);
             }
         }
-
-        /// <summary>
-        /// Change data file password
-        /// </summary>
-        public void ChangePassword(string password, EngineSettings settings)
-        {
-            if (settings.Password == password) return;
-
-            // rebuild file
-            this.ChangePasswordRebuild(password);
-
-            // change current settings password
-            settings.Password = password;
-
-            // close all streams
-            _streamPool.Dispose();
-
-            // new datafile will be created with new password
-            _streamFactory = settings.CreateDataFactory();
-
-            // create stream pool
-            _streamPool = new StreamPool(_streamFactory, false);
-
-            // log position still at same position
-        }
-
-        /// <summary>
-        /// Rebuild datafile copy source to destination with 2 different Stream (pointing to same file)
-        /// Can add, remove or change a password
-        /// </summary>
-        private void ChangePasswordRebuild(string password)
-        {
-            var source = this.Writer;
-            var length = source.Length;
-
-            // if destination stream are encrypted, came from end to begin
-            if (password != null)
-            {
-                // encrypt
-                var header = new byte[PAGE_SIZE];
-
-                // read header page
-                source.Position = 0;
-                source.Read(header, 0, PAGE_SIZE);
-
-                // create aes stream and initialize first page
-                var destination = new AesStream(password, this.Writer is AesStream ? (this.Writer as AesStream).BaseStream : this.Writer, true);
-
-                var position = length - PAGE_SIZE;
-                var buffer = new byte[PAGE_SIZE];
-
-                while (position > 0)
-                {
-                    source.Position = position;
-                    source.Read(buffer, 0, PAGE_SIZE);
-
-                    destination.Position = position;
-                    destination.Write(buffer, 0, PAGE_SIZE);
-
-                    position -= PAGE_SIZE;
-                }
-
-                // write header page
-                destination.Position = 0;
-                destination.Write(header, 0, PAGE_SIZE);
-            }
-            else
-            {
-                var destination = (source as AesStream).BaseStream;
-
-                var position = 0;
-                var buffer = new byte[PAGE_SIZE];
-
-                while (position < length)
-                {
-                    source.Position = position;
-                    source.Read(buffer, 0, PAGE_SIZE);
-
-                    destination.Position = position;
-                    destination.Write(buffer, 0, PAGE_SIZE);
-
-                    position += PAGE_SIZE;
-                }
-
-                ENSURE(destination.Length == length + PAGE_SIZE, "current source must have 1 extra page for SALT");
-
-                destination.SetLength(length);
-            }
-        }
-
-        #endregion
 
         public void Dispose()
         {
-            // dispose queue (wait finish)
-            _queue?.Dispose();
-
-            // dispose Stream pools
-            _streamPool?.Dispose();
-
             // other disposes
             _cache?.Dispose();
         }

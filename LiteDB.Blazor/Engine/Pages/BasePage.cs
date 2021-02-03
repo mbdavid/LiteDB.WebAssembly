@@ -306,7 +306,7 @@ namespace LiteDB.Engine
         {
             var isNewInsert = index == byte.MaxValue;
 
-            ENSURE(_buffer.ShareCounter == BUFFER_WRITABLE, "page must be writable to support changes");
+            ENSURE(_buffer.IsWritable, "page must be writable to support changes");
             ENSURE(bytesLength > 0, "must insert more than 0 bytes");
             ENSURE(this.FreeBytes >= bytesLength + (isNewInsert ? SLOT_SIZE : 0), "length must be always lower than current free space");
             ENSURE(this.ItemsCount < byte.MaxValue, "page full");
@@ -376,7 +376,7 @@ namespace LiteDB.Engine
         /// </summary>
         public void Delete(byte index)
         {
-            ENSURE(_buffer.ShareCounter == BUFFER_WRITABLE, "page must be writable to support changes");
+            ENSURE(_buffer.IsWritable, "page must be writable to support changes");
 
             // read block position on index slot
             var positionAddr = CalcPositionAddr(index);
@@ -443,7 +443,7 @@ namespace LiteDB.Engine
         /// </summary>
         public BufferSlice Update(byte index, ushort bytesLength)
         {
-            ENSURE(_buffer.ShareCounter == BUFFER_WRITABLE, "page must be writable to support changes");
+            ENSURE(_buffer.IsWritable, "page must be writable to support changes");
             ENSURE(bytesLength > 0, "must update more than 0 bytes");
 
             // read slot address
@@ -531,7 +531,7 @@ namespace LiteDB.Engine
         public void Defrag()
         {
             ENSURE(this.FragmentedBytes > 0, "do not call this when page has no fragmentation");
-            ENSURE(_buffer.ShareCounter == BUFFER_WRITABLE, "page must be writable to support changes");
+            ENSURE(_buffer.IsWritable, "page must be writable to support changes");
             ENSURE(this.HighestIndex < byte.MaxValue, "there is no items in this page to run defrag");
 
             LOG($"defrag page #{this.PageID} (fragments: {this.FragmentedBytes})", "DISK");
