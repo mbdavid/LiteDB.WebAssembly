@@ -41,10 +41,6 @@ namespace LiteDB.Engine
         public TransactionPages Pages => _transPages;
         public DateTime StartTime => _startTime;
         public IEnumerable<Snapshot> Snapshots => _snapshots.Values;
-        public bool QueryOnly { get; }
-
-        // get/set
-        public int MaxTransactionSize { get; set; }
 
         /// <summary>
         /// Get/Set how many open cursor this transaction are running
@@ -56,15 +52,12 @@ namespace LiteDB.Engine
         /// </summary>
         public bool ExplicitTransaction { get; set; } = false;
 
-        public TransactionService(HeaderPage header, DiskService disk, WalIndexService walIndex, int maxTransactionSize, bool queryOnly)
+        public TransactionService(HeaderPage header, DiskService disk, WalIndexService walIndex)
         {
             // retain instances
             _header = header;
             _disk = disk;
             _walIndex = walIndex;
-
-            this.QueryOnly = queryOnly;
-            this.MaxTransactionSize = maxTransactionSize;
 
             // create new transactionID
             _transactionID = walIndex.NextTransactionID();

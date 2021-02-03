@@ -3,6 +3,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB
@@ -12,9 +14,9 @@ namespace LiteDB
     /// </summary>
     public class BsonDataReader : IBsonDataReader
     {
-        private readonly IEnumerator<BsonValue> _source = null;
+        private readonly IAsyncEnumerator<BsonValue> _source = null;
         private readonly string _collection = null;
-        private readonly bool _hasValues;
+        private bool _hasValues;
 
         private BsonValue _current = null;
         private bool _isFirst;
@@ -38,15 +40,25 @@ namespace LiteDB
             _collection = collection;
         }
 
+        public static async Task<BsonDataReader> CreateAsync(IAsyncEnumerable<BsonValue> values, string collection)
+        {
+            var reader = new BsonDataReader(values, collection);
+            await reader.Initialize();
+            return reader;
+        }
+
         /// <summary>
         /// Initialize with an IEnumerable data source
         /// </summary>
-        internal BsonDataReader(IEnumerable<BsonValue> values, string collection)
+        private BsonDataReader(IAsyncEnumerable<BsonValue> values, string collection)
         {
-            _source = values.GetEnumerator();
+            _source = values.GetAsyncEnumerator();
             _collection = collection;
+        }
 
-            if (_source.MoveNext())
+        private async Task Initialize()
+        {
+            if (await _source.MoveNextAsync())
             {
                 _hasValues = _isFirst = true;
                 _current = _source.Current;
@@ -71,7 +83,7 @@ namespace LiteDB
         /// <summary>
         /// Move cursor to next result. Returns true if read was possible
         /// </summary>
-        public bool Read()
+        public async Task<bool> ReadAsync()
         {
             if (!_hasValues) return false;
 
@@ -84,7 +96,7 @@ namespace LiteDB
             {
                 if (_source != null)
                 {
-                    var read = _source.MoveNext();
+                    var read = await _source.MoveNextAsync();
                     _current = _source.Current;
                     return read;
                 }
@@ -103,27 +115,9 @@ namespace LiteDB
             }
         }
 
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
-            this.Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        ~BsonDataReader()
-        {
-            this.Dispose(false);
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (_disposed) return;
-
-            _disposed = true;
-
-            if (disposing)
-            {
-                _source?.Dispose();
-            }
+            await _source.DisposeAsync();
         }
     }
 }

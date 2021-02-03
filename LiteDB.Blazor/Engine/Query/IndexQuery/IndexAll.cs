@@ -20,9 +20,12 @@ namespace LiteDB.Engine
             return 100; // worst index cost
         }
 
-        public override IEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
+        public override async IAsyncEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
         {
-            return indexer.FindAll(index, this.Order);
+            await foreach(var node in indexer.FindAll(index, this.Order))
+            {
+                yield return node;
+            }
         }
 
         public override string ToString()

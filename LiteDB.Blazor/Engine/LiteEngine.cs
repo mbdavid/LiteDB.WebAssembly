@@ -102,7 +102,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Run checkpoint command to copy log file into data file
         /// </summary>
-        public int CheckpointAsync() => _walIndex.Checkpoint(false, true);
+        public async Task<int> CheckpointAsync() => await _walIndex.Checkpoint();
 
         public void Dispose()
         {

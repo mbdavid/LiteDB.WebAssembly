@@ -1,4 +1,6 @@
 ﻿using System.Collections.Generic;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -17,7 +19,7 @@ namespace LiteDB.Engine
             _name = name;
         }
 
-        public BsonDocument Load(IndexNode node)
+        public Task<BsonDocument> Load(IndexNode node)
         {
             ENSURE(node.DataBlock.IsEmpty == false, "Never should be empty rawid");
 
@@ -28,14 +30,14 @@ namespace LiteDB.Engine
 
             doc.RawId = node.DataBlock;
 
-            return doc;
+            return Task.FromResult(doc);
         }
 
-        public BsonDocument Load(PageAddress rawId)
+        public async Task<BsonDocument> Load(PageAddress rawId)
         {
-            var node = _indexer.GetNode(rawId);
+            var node = await _indexer.GetNode(rawId);
 
-            return this.Load(node);
+            return await this.Load(node);
         }
     }
 }

@@ -37,8 +37,37 @@
   <ItemGroup>
     <Compile Remove="Blazor\**" />
     <Compile Remove="Client\**" />
+    <Compile Remove="Engine\Query\**" />
     <EmbeddedResource Remove="Client\**" />
+    <EmbeddedResource Remove="Engine\Query\**" />
     <None Remove="Client\**" />
+    <None Remove="Engine\Query\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Engine\Query\IndexQuery\Index.cs" />
+    <Compile Include="Engine\Query\IndexQuery\IndexAll.cs" />
+    <Compile Include="Engine\Query\IndexQuery\IndexEquals.cs" />
+    <Compile Include="Engine\Query\IndexQuery\IndexIn.cs" />
+    <Compile Include="Engine\Query\IndexQuery\IndexLike.cs" />
+    <Compile Include="Engine\Query\IndexQuery\IndexRange.cs" />
+    <Compile Include="Engine\Query\IndexQuery\IndexScan.cs" />
+    <Compile Include="Engine\Query\IndexQuery\IndexVirtual.cs" />
+    <Compile Include="Engine\Query\Lookup\DatafileLookup.cs" />
+    <Compile Include="Engine\Query\Lookup\IDocumentLookup.cs" />
+    <Compile Include="Engine\Query\Lookup\IndexKeyLoader.cs" />
+    <Compile Include="Engine\Query\Pipeline\BasePipe.cs" />
+    <Compile Include="Engine\Query\Pipeline\DocumentCacheEnumerable.cs" />
+    <Compile Include="Engine\Query\Pipeline\GroupByPipe.cs" />
+    <Compile Include="Engine\Query\Pipeline\QueryPipe.cs" />
+    <Compile Include="Engine\Query\Query.cs" />
+    <Compile Include="Engine\Query\QueryExecutor.cs" />
+    <Compile Include="Engine\Query\QueryOptimization.cs" />
+    <Compile Include="Engine\Query\Structures\GroupBy.cs" />
+    <Compile Include="Engine\Query\Structures\IndexCost.cs" />
+    <Compile Include="Engine\Query\Structures\OrderBy.cs" />
+    <Compile Include="Engine\Query\Structures\QueryPlan.cs" />
+    <Compile Include="Engine\Query\Structures\Select.cs" />
   </ItemGroup>
 
   <!-- Begin References -->

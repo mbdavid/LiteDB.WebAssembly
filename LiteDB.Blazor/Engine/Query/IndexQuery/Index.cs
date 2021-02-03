@@ -36,21 +36,30 @@ namespace LiteDB.Engine
         /// <summary>
         /// Abstract method that must be implement for index seek/scan - Returns IndexNodes that match with index
         /// </summary>
-        public abstract IEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index);
+        public abstract IAsyncEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index);
 
         /// <summary>
         /// Find witch index will be used and run Execute method
         /// </summary>
-        public virtual IEnumerable<IndexNode> Run(CollectionPage col, IndexService indexer)
+        public virtual async IAsyncEnumerable<IndexNode> Run(CollectionPage col, IndexService indexer)
         {
             // get index for this query
             var index = col.GetCollectionIndex(this.Name);
 
             if (index == null) throw LiteException.IndexNotFound(this.Name);
 
-            // execute query to get all IndexNodes
-            return this.Execute(indexer, index)
-                .DistinctBy(x => x.DataBlock, null);
+            var distinct = new HashSet<PageAddress>();
+
+            await foreach(var node in this.Execute(indexer, index))
+            {
+                // distinct by dataBlock
+                if (distinct.Contains(node.DataBlock) == false)
+                {
+                    distinct.Add(node.DataBlock);
+
+                    yield return node;
+                }
+            }
         }
 
         #endregion

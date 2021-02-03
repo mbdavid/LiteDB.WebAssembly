@@ -31,7 +31,7 @@ namespace LiteDB.Engine
             return 20;
         }
 
-        public override IEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
+        public override async IAsyncEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
         {
             // if order are desc, swap start/end values
             var start = this.Order == Query.Ascending ? _start : _end;
@@ -42,9 +42,9 @@ namespace LiteDB.Engine
 
             // find first indexNode (or get from head/tail if Min/Max value)
             var first = 
-                start.Type == BsonType.MinValue ? indexer.GetNode(index.Head) :
-                start.Type == BsonType.MaxValue ? indexer.GetNode(index.Tail) :
-                indexer.Find(index, start, true, this.Order);
+                start.Type == BsonType.MinValue ? await indexer.GetNode(index.Head) :
+                start.Type == BsonType.MaxValue ? await indexer.GetNode(index.Tail) :
+                await indexer.Find(index, start, true, this.Order);
 
             var node = first;
 
@@ -52,7 +52,7 @@ namespace LiteDB.Engine
             if (startEquals && node != null)
             {
                 // going backward in same value list to get first value
-                while (!node.GetNextPrev(0, -this.Order).IsEmpty && ((node = indexer.GetNode(node.GetNextPrev(0, -this.Order))).Key.CompareTo(start) == 0))
+                while (!node.GetNextPrev(0, -this.Order).IsEmpty && ((node = await indexer.GetNode(node.GetNextPrev(0, -this.Order))).Key.CompareTo(start) == 0))
                 {
                     if (node.Key.IsMinValue || node.Key.IsMaxValue) break;
 
@@ -75,7 +75,7 @@ namespace LiteDB.Engine
                     yield return node;
                 }
 
-                node = indexer.GetNode(node.GetNextPrev(0, this.Order));
+                node = await indexer.GetNode(node.GetNextPrev(0, this.Order));
             }
 
             // navigate using next[0] do next node - if less or equals returns
@@ -96,7 +96,7 @@ namespace LiteDB.Engine
                     break;
                 }
 
-                node = indexer.GetNode(node.GetNextPrev(0, this.Order));
+                node = await indexer.GetNode(node.GetNextPrev(0, this.Order));
             }
         }
 

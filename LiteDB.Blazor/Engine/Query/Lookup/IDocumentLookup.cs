@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 
 namespace LiteDB.Engine
 {
@@ -7,7 +8,7 @@ namespace LiteDB.Engine
     /// </summary>
     internal interface IDocumentLookup
     {
-        BsonDocument Load(IndexNode node);
-        BsonDocument Load(PageAddress rawId);
+        Task<BsonDocument> Load(IndexNode node);
+        Task<BsonDocument> Load(PageAddress rawId);
     }
 }

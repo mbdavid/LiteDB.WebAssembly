@@ -1,4 +1,6 @@
 ﻿using System.Collections.Generic;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -19,18 +21,18 @@ namespace LiteDB.Engine
             _fields = fields;
         }
 
-        public virtual BsonDocument Load(IndexNode node)
+        public virtual async Task<BsonDocument> Load(IndexNode node)
         {
             ENSURE(node.DataBlock != PageAddress.Empty, "data block must be a valid block address");
 
-            return this.Load(node.DataBlock);
+            return await this.Load(node.DataBlock);
         }
 
-        public virtual BsonDocument Load(PageAddress rawId)
+        public virtual async Task<BsonDocument> Load(PageAddress rawId)
         {
-            using (var reader = new BufferReaderAsync(_data.Read(rawId), _utcDate))
+            await using (var reader = await BufferReaderAsync.CreateAsync(_data.Read(rawId), _utcDate))
             {
-                var doc = reader.ReadDocument(_fields);
+                var doc = await reader.ReadDocument(_fields);
 
                 doc.RawId = rawId;
 

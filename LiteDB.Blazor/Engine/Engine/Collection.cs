@@ -42,7 +42,7 @@ namespace LiteDB.Engine
                 throw new NotImplementedException();
 
                 // remove sequence number (if exists)
-                _sequences.TryRemove(name, out var dummy);
+                //_sequences.TryRemove(name, out var dummy);
 
                 return true;
             });

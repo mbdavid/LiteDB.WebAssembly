@@ -50,16 +50,16 @@ namespace LiteDB.Engine
         internal BsonDataReader ExecuteQuery(bool executionPlan)
         {
             // get current transaction (if contains a explicit transaction) or a query-only transaction
-            var transaction = _monitor.GetTransaction(true, true, out var isNew);
+            var transaction = _engine.GetTransaction();
 
             transaction.OpenCursors.Add(_cursor);
 
             // return new BsonDataReader with IEnumerable source
             return new BsonDataReader(RunQuery(), _collection);
 
-            IEnumerable<BsonDocument> RunQuery()
+            IAsyncEnumerable<BsonDocument> RunQuery()
             {
-                var snapshot = transaction.CreateSnapshot(_query.ForUpdate ? LockMode.Write : LockMode.Read, _collection, false);
+                var snapshot = await transaction.CreateSnapshot(_query.ForUpdate ? LockMode.Write : LockMode.Read, _collection, false);
 
                 // no collection, no documents
                 if (snapshot.CollectionPage == null && _source == null)

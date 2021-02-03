@@ -25,9 +25,9 @@ namespace LiteDB.Engine
             return 10; // 
         }
 
-        public override IEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
+        public override async IAsyncEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
         {
-            var node = indexer.Find(index, _value, false, Query.Ascending);
+            var node = await indexer.Find(index, _value, false, Query.Ascending);
 
             if (node == null) yield break;
 
@@ -39,7 +39,7 @@ namespace LiteDB.Engine
                 var first = node;
 
                 // first go forward
-                while (!node.Next[0].IsEmpty && ((node = indexer.GetNode(node.Next[0])).Key.CompareTo(_value, indexer.Collation) == 0))
+                while (!node.Next[0].IsEmpty && ((node = await indexer.GetNode(node.Next[0])).Key.CompareTo(_value, indexer.Collation) == 0))
                 {
                     if (node.Key.IsMinValue || node.Key.IsMaxValue) break;
 
@@ -49,7 +49,7 @@ namespace LiteDB.Engine
                 node = first;
                 
                 // and than, go backward
-                while (!node.Prev[0].IsEmpty && ((node = indexer.GetNode(node.Prev[0])).Key.CompareTo(_value, indexer.Collation) == 0))
+                while (!node.Prev[0].IsEmpty && ((node = await indexer.GetNode(node.Prev[0])).Key.CompareTo(_value, indexer.Collation) == 0))
                 {
                     if (node.Key.IsMinValue || node.Key.IsMaxValue) break;
 

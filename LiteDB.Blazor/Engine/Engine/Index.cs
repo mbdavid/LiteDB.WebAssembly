@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -11,7 +13,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Create a new index (or do nothing if already exists) to a collection/field
         /// </summary>
-        public bool EnsureIndex(string collection, string name, BsonExpression expression, bool unique)
+        public async Task<bool> EnsureIndex(string collection, string name, BsonExpression expression, bool unique)
         {
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
             if (name.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(name));
@@ -25,9 +27,9 @@ namespace LiteDB.Engine
 
             if (expression.Source == "$._id") return false; // always exists
 
-            return this.AutoTransaction(transaction =>
+            return await this.AutoTransaction(async transaction =>
             {
-                var snapshot = transaction.CreateSnapshot(LockMode.Write, collection, true);
+                var snapshot = await transaction.CreateSnapshot(LockMode.Write, collection, true);
                 var collectionPage = snapshot.CollectionPage;
                 var indexer = new IndexService(snapshot, _header.Pragmas.Collation);
                 var data = new DataService(snapshot);
@@ -53,9 +55,9 @@ namespace LiteDB.Engine
                 // read all objects (read from PK index)
                 foreach (var pkNode in new IndexAll("_id", LiteDB.Query.Ascending).Run(collectionPage, indexer))
                 {
-                    using (var reader = new BufferReaderAsync(data.Read(pkNode.DataBlock)))
+                    await using (var reader = await BufferReaderAsync.CreateAsync(data.Read(pkNode.DataBlock)))
                     {
-                        var doc = reader.ReadDocument(expression.Fields);
+                        var doc = await reader.ReadDocument(expression.Fields);
 
                         // first/last node in this document that will be added
                         IndexNode last = null;
@@ -68,7 +70,7 @@ namespace LiteDB.Engine
                         foreach (var key in keys)
                         {
                             // insert new index node
-                            var node = indexer.AddNode(index, key, pkNode.DataBlock, last);
+                            var node = await indexer.AddNode(index, key, pkNode.DataBlock, last);
 
                             if (first == null) first = node;
 
@@ -85,7 +87,7 @@ namespace LiteDB.Engine
                         }
                     }
 
-                    transaction.Safepoint();
+                    await transaction.Safepoint();
                 }
 
                 return true;
@@ -95,16 +97,16 @@ namespace LiteDB.Engine
         /// <summary>
         /// Drop an index from a collection
         /// </summary>
-        public bool DropIndex(string collection, string name)
+        public async Task<bool> DropIndex(string collection, string name)
         {
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
             if (name.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(name));
 
             if (name == "_id") throw LiteException.IndexDropId();
 
-            return this.AutoTransaction(transaction =>
+            return await this.AutoTransaction(async transaction =>
             {
-                var snapshot = transaction.CreateSnapshot(LockMode.Write, collection, false);
+                var snapshot = await transaction.CreateSnapshot(LockMode.Write, collection, false);
                 var col = snapshot.CollectionPage;
                 var indexer = new IndexService(snapshot, _header.Pragmas.Collation);
             
@@ -118,7 +120,7 @@ namespace LiteDB.Engine
                 if (index == null) return false;
 
                 // delete all data pages + indexes pages
-                indexer.DropIndex(index);
+                await indexer.DropIndex(index);
 
                 // remove index entry in collection page
                 snapshot.CollectionPage.DeleteCollectionIndex(name);

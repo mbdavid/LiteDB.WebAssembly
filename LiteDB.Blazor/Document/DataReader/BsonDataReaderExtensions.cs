@@ -3,6 +3,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB
@@ -12,31 +14,31 @@ namespace LiteDB
     /// </summary>
     public static class BsonDataReaderExtensions
     {
-        public static IEnumerable<BsonValue> ToEnumerable(this IBsonDataReader reader)
+        public static async IAsyncEnumerable<BsonValue> ToAsyncEnumerable(this IBsonDataReader reader)
         {
             try
             {
-                while (reader.Read())
+                while (await reader.ReadAsync())
                 {
                     yield return reader.Current;
                 }
             }
             finally
             {
-                reader.Dispose();
+                await reader.DisposeAsync();
             }
         }
 
-        public static BsonValue[] ToArray(this IBsonDataReader reader) => ToEnumerable(reader).ToArray();
-
-        public static IList<BsonValue> ToList(this IBsonDataReader reader) => ToEnumerable(reader).ToList();
-
-        public static BsonValue First(this IBsonDataReader reader) => ToEnumerable(reader).First();
-
-        public static BsonValue FirstOrDefault(this IBsonDataReader reader) => ToEnumerable(reader).FirstOrDefault();
-
-        public static BsonValue Single(this IBsonDataReader reader) => ToEnumerable(reader).Single();
-
-        public static BsonValue SingleOrDefault(this IBsonDataReader reader) => ToEnumerable(reader).SingleOrDefault();
+        //public static Task<BsonValue[]> ToArrayAsync(this IBsonDataReader reader) => ToAsyncEnumerable(reader).ToArray();
+        //
+        //public static Task<IList<BsonValue>> ToListAsync(this IBsonDataReader reader) => ToEnumerable(reader).ToList();
+        //
+        //public static Task<BsonValue> FirstAsync(this IBsonDataReader reader) => ToEnumerable(reader).First();
+        //
+        //public static Task<BsonValue> FirstOrDefaultAsync(this IBsonDataReader reader) => ToEnumerable(reader).FirstOrDefault();
+        //
+        //public static Task<BsonValue> SingleAsync(this IBsonDataReader reader) => ToEnumerable(reader).Single();
+        //
+        //public static Task<BsonValue> SingleOrDefaultAsync(this IBsonDataReader reader) => ToAsyncEnumerable(reader).SingleOrDefault();
     }
 }

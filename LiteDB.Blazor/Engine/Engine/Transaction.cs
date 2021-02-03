@@ -13,10 +13,10 @@ namespace LiteDB.Engine
         /// Initialize a new transaction. Transaction are created "per-thread". There is only one single transaction per thread.
         /// Return true if transaction was created or false if current thread already in a transaction.
         /// </summary>
-        public async Task<bool> BeginTrans()
+        public async Task<bool> BeginTransAsync()
         {
             var isNew = _transaction == null;
-            var transacion = await this.GetTransaction(false);
+            var transacion = await this.GetTransaction();
 
             transacion.ExplicitTransaction = true;
 
@@ -30,7 +30,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Persist all dirty pages into LOG file
         /// </summary>
-        public async Task<bool> Commit()
+        public async Task<bool> CommitAsync()
         {
             if (_transaction != null)
             {
@@ -55,7 +55,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Do rollback to current transaction. Clear dirty pages in memory and return new pages to main empty linked-list
         /// </summary>
-        public async Task<bool> Rollback()
+        public async Task<bool> RollbackAsync()
         {
             if (_transaction == null) return false;
 
@@ -81,14 +81,14 @@ namespace LiteDB.Engine
         /// <summary>
         /// Get current transaction or create a new one
         /// </summary>
-        private async Task<TransactionService> GetTransaction(bool queryOnly)
+        internal async Task<TransactionService> GetTransaction()
         {
             if (_transaction == null)
             {
                 // lock transaction
                 await _locker.WaitAsync(_header.Pragmas.Timeout);
 
-                _transaction = new TransactionService(_header, _disk, _walIndex, MAX_TRANSACTION_SIZE, queryOnly);
+                _transaction = new TransactionService(_header, _disk, _walIndex);
             }
 
             return _transaction;
@@ -100,7 +100,7 @@ namespace LiteDB.Engine
         private async Task<T> AutoTransaction<T>(Func<TransactionService, Task<T>> fn)
         {
             var isNew = _transaction == null;
-            var transaction = await this.GetTransaction(false);
+            var transaction = await this.GetTransaction();
 
             try
             {

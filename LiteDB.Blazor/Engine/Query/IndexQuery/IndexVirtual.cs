@@ -25,12 +25,12 @@ namespace LiteDB.Engine
             return 100; // virtual index is always full scan
         }
 
-        public override IEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
+        public override IAsyncEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
         {
             throw new NotImplementedException();
         }
 
-        public override IEnumerable<IndexNode> Run(CollectionPage col, IndexService indexer)
+        public override async IAsyncEnumerable<IndexNode> Run(CollectionPage col, IndexService indexer)
         {
             var rawId = 0u;
 

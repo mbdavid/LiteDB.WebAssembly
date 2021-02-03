@@ -25,13 +25,13 @@ namespace LiteDB.Engine
                 (uint)_values.Count * 10;
         }
 
-        public override IEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
+        public override async IAsyncEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
         {
             foreach (var value in _values.Distinct())
             {
                 var idx = new IndexEquals(this.Name, value);
 
-                foreach (var node in idx.Execute(indexer, index))
+                await foreach (var node in idx.Execute(indexer, index))
                 {
                     yield return node;
                 }

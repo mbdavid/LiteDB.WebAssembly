@@ -58,6 +58,9 @@ namespace LiteDB.Engine
         /// </summary>
         public async Task<int> DeleteManyAsync(string collection, BsonExpression predicate)
         {
+            throw new NotImplementedException();
+
+            /*
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
 
             // do optimization for when using "_id = value" key
@@ -101,6 +104,7 @@ namespace LiteDB.Engine
 
                 return await this.DeleteAsync(collection, getIds());
             }
+            */
         }
     }
 }

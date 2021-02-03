@@ -27,19 +27,24 @@ namespace LiteDB.Engine
             return 100; // index full scan
         }
 
-        public override IEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
+        public override async IAsyncEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
         {
             // if contains startsWith string, search using index Find
             // otherwise, use index full scan and test results
-            return _startsWith.Length > 0 ? 
+            var nodes = _startsWith.Length > 0 ? 
                 this.ExecuteStartsWith(indexer, index) : 
                 this.ExecuteLike(indexer, index);
+
+            await foreach(var node in nodes)
+            {
+                yield return node;
+            }
         }
 
-        private IEnumerable<IndexNode> ExecuteStartsWith(IndexService indexer, CollectionIndex index)
+        private async IAsyncEnumerable<IndexNode> ExecuteStartsWith(IndexService indexer, CollectionIndex index)
         {
             // find first indexNode
-            var first = indexer.Find(index, _startsWith, true, this.Order);
+            var first = await indexer.Find(index, _startsWith, true, this.Order);
             var node = first;
 
             // if collection exists but are empty
@@ -72,11 +77,11 @@ namespace LiteDB.Engine
                     break;
                 }
 
-                node = indexer.GetNode(node.GetNextPrev(0, -this.Order));
+                node = await indexer.GetNode(node.GetNextPrev(0, -this.Order));
             }
 
             // move forward
-            node = indexer.GetNode(first.GetNextPrev(0, this.Order));
+            node = await indexer.GetNode(first.GetNextPrev(0, this.Order));
 
             while (node != null)
             {
@@ -106,15 +111,19 @@ namespace LiteDB.Engine
                 }
 
                 // first, go backward to get all same values
-                node = indexer.GetNode(node.GetNextPrev(0, this.Order));
+                node = await indexer.GetNode(node.GetNextPrev(0, this.Order));
             }
         }
 
-        private IEnumerable<IndexNode> ExecuteLike(IndexService indexer, CollectionIndex index)
+        private async IAsyncEnumerable<IndexNode> ExecuteLike(IndexService indexer, CollectionIndex index)
         {
-            return indexer
-                .FindAll(index, this.Order)
-                .Where(x => x.Key.IsString && x.Key.AsString.SqlLike(_pattern, indexer.Collation));
+            await foreach(var node in indexer.FindAll(index, this.Order))
+            {
+                if (node.Key.IsString && node.Key.AsString.SqlLike(_pattern, indexer.Collation))
+                {
+                    yield return node;
+                }
+            }
         }
 
         public override string ToString()

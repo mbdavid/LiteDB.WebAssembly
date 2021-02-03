@@ -23,11 +23,15 @@ namespace LiteDB.Engine
             return 80;
         }
 
-        public override IEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
+        public override async IAsyncEnumerable<IndexNode> Execute(IndexService indexer, CollectionIndex index)
         {
-            return indexer
-                .FindAll(index, this.Order)
-                .Where(i => _func(i.Key));
+            await foreach(var node in indexer.FindAll(index, this.Order))
+            {
+                if (_func(node.Key))
+                {
+                    yield return node;
+                }
+            }
         }
 
         public override string ToString()

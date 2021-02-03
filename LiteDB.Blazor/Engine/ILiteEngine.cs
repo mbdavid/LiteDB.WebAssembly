@@ -14,7 +14,7 @@ namespace LiteDB.Engine
         Task<bool> CommitAsync();
         Task<bool> RollbackAsync();
 
-        IBsonDataReader QueryAsync(string collection, Query query);
+        Task<IBsonDataReader> QueryAsync(string collection, Query query);
 
         Task<int> InsertAsync(string collection, IEnumerable<BsonDocument> docs, BsonAutoId autoId);
 
