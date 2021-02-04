@@ -97,15 +97,15 @@ namespace LiteDB.Engine
         /// <summary>
         /// Select corrent pipe
         /// </summary>
-        public BasePipe GetPipe(TransactionService transaction, Snapshot snapshot, SortDisk tempDisk, EnginePragmas pragmas)
+        public BasePipe GetPipe(TransactionService transaction, Snapshot snapshot, EnginePragmas pragmas)
         {
-            if (this.GroupBy == null)
+            //if (this.GroupBy == null)
             {
-                return new QueryPipe(transaction, this.GetLookup(snapshot, pragmas), tempDisk, pragmas);
+                return new QueryPipe(transaction, this.GetLookup(snapshot, pragmas), pragmas);
             }
-            else
+            //else
             {
-                return new GroupByPipe(transaction, this.GetLookup(snapshot, pragmas), tempDisk, pragmas);
+            //    return new GroupByPipe(transaction, this.GetLookup(snapshot, pragmas), tempDisk, pragmas);
             }
         }
 

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -10,14 +12,14 @@ namespace LiteDB.Engine
         /// <summary>
         /// Implement update command to a document inside a collection. Return number of documents updated
         /// </summary>
-        public int Update(string collection, IEnumerable<BsonDocument> docs)
+        public async Task<int> UpdateAsync(string collection, IEnumerable<BsonDocument> docs)
         {
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
             if (docs == null) throw new ArgumentNullException(nameof(docs));
 
-            return this.AutoTransaction(transaction =>
+            return await this.AutoTransaction(async transaction =>
             {
-                var snapshot = transaction.CreateSnapshot(LockMode.Write, collection, false);
+                var snapshot = await transaction.CreateSnapshot(LockMode.Write, collection, false);
                 var collectionPage = snapshot.CollectionPage;
                 var indexer = new IndexService(snapshot, _header.Pragmas.Collation);
                 var data = new DataService(snapshot);
@@ -29,9 +31,9 @@ namespace LiteDB.Engine
 
                 foreach (var doc in docs)
                 {
-                    transaction.Safepoint();
+                    await transaction.Safepoint();
 
-                    if (this.UpdateDocument(snapshot, collectionPage, doc, indexer, data))
+                    if (await this.UpdateDocument(snapshot, collectionPage, doc, indexer, data))
                     {
                         count++;
                     }
@@ -44,12 +46,12 @@ namespace LiteDB.Engine
         /// <summary>
         /// Update documents using transform expression (must return a scalar/document value) using predicate as filter
         /// </summary>
-        public int UpdateMany(string collection, BsonExpression transform, BsonExpression predicate)
+        public async Task<int> UpdateManyAsync(string collection, BsonExpression transform, BsonExpression predicate)
         {
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
             if (transform == null) throw new ArgumentNullException(nameof(transform));
 
-            return this.Update(collection, transformDocs());
+            return await this.UpdateAsync(collection, transformDocs());
 
             IEnumerable<BsonDocument> transformDocs()
             {
@@ -92,7 +94,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Implement internal update document
         /// </summary>
-        private bool UpdateDocument(Snapshot snapshot, CollectionPage col, BsonDocument doc, IndexService indexer, DataService data)
+        private async Task<bool> UpdateDocument(Snapshot snapshot, CollectionPage col, BsonDocument doc, IndexService indexer, DataService data)
         {
             // normalize id before find
             var id = doc["_id"];
@@ -104,21 +106,24 @@ namespace LiteDB.Engine
             }
             
             // find indexNode from pk index
-            var pkNode = indexer.Find(col.PK, id, false, LiteDB.Query.Ascending);
+            var pkNode = await indexer.Find(col.PK, id, false, LiteDB.Query.Ascending);
             
             // if not found document, no updates
             if (pkNode == null) return false;
             
             // update data storage
-            data.Update(col, pkNode.DataBlock, doc);
-            
+            await data.Update(col, pkNode.DataBlock, doc);
+
             // get all current non-pk index nodes from this data block (slot, key, nodePosition)
-            var oldKeys = indexer.GetNodeList(pkNode.NextNode)
-                .Select(x => new Tuple<byte, BsonValue, PageAddress>(x.Slot, x.Key, x.Position))
-                .ToArray();
+            var oldKeys = new List<(byte slot, BsonValue key, PageAddress position)>();
+
+            await foreach(var node in indexer.GetNodeList(pkNode.NextNode))
+            {
+                oldKeys.Add(new (node.Slot, node.Key, node.Position));
+            }                
 
             // build a list of all new key index keys
-            var newKeys = new List<Tuple<byte, BsonValue, string>>();
+            var newKeys = new List<(byte slot, BsonValue key, string name)>();
 
             foreach (var index in col.GetCollectionIndexes().Where(x => x.Name != "_id"))
             {
@@ -127,11 +132,11 @@ namespace LiteDB.Engine
 
                 foreach (var key in keys)
                 {
-                    newKeys.Add(new Tuple<byte, BsonValue, string>(index.Slot, key, index.Name));
+                    newKeys.Add(new (index.Slot, key, index.Name));
                 }
             }
 
-            if (oldKeys.Length == 0 && newKeys.Count == 0) return true;
+            if (oldKeys.Count == 0 && newKeys.Count == 0) return true;
 
             // get a list of all nodes that are in oldKeys but not in newKeys (must delete)
             var toDelete = new HashSet<PageAddress>(oldKeys
@@ -147,14 +152,14 @@ namespace LiteDB.Engine
             if (toDelete.Count == 0 && toInsert.Length == 0) return true;
 
             // delete nodes and return last keeped node in list
-            var last = indexer.DeleteList(pkNode.Position, toDelete);
+            var last = await indexer.DeleteList(pkNode.Position, toDelete);
 
             // now, insert all new nodes
             foreach(var elem in toInsert)
             {
-                var index = col.GetCollectionIndex(elem.Item3);
+                var index = col.GetCollectionIndex(elem.name);
 
-                last = indexer.AddNode(index, elem.Item2, pkNode.DataBlock, last);
+                last = await indexer.AddNode(index, elem.key, pkNode.DataBlock, last);
             }
 
             return true;

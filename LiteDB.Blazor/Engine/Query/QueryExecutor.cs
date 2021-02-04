@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -32,32 +34,32 @@ namespace LiteDB.Engine
             _source = source;
         }
 
-        public BsonDataReader ExecuteQuery()
+        public async Task<BsonDataReader> ExecuteQuery()
         {
-            if (_query.Into == null)
+            //if (_query.Into == null)
             {
-                return this.ExecuteQuery(_query.ExplainPlan);
+                return await this.ExecuteQuery(_query.ExplainPlan);
             }
-            else
+            //else
             {
-                return this.ExecuteQueryInto(_query.Into, _query.IntoAutoId);
+            //    return this.ExecuteQueryInto(_query.Into, _query.IntoAutoId);
             }
         }
 
         /// <summary>
         /// Run query definition into engine. Execute optimization to get query planner
         /// </summary>
-        internal BsonDataReader ExecuteQuery(bool executionPlan)
+        internal async Task<BsonDataReader> ExecuteQuery(bool executionPlan)
         {
             // get current transaction (if contains a explicit transaction) or a query-only transaction
-            var transaction = _engine.GetTransaction();
+            var transaction = await _engine.GetTransaction();
 
-            transaction.OpenCursors.Add(_cursor);
+            //transaction.OpenCursors.Add(_cursor);
 
             // return new BsonDataReader with IEnumerable source
-            return new BsonDataReader(RunQuery(), _collection);
+            return await BsonDataReader.CreateAsync(RunQuery(), _collection);
 
-            IAsyncEnumerable<BsonDocument> RunQuery()
+            async IAsyncEnumerable<BsonDocument> RunQuery()
             {
                 var snapshot = await transaction.CreateSnapshot(_query.ForUpdate ? LockMode.Write : LockMode.Read, _collection, false);
 
@@ -139,6 +141,7 @@ namespace LiteDB.Engine
             };
         }
 
+        /*
         /// <summary>
         /// Execute query and insert result into another collection. Support external collections
         /// </summary>
@@ -169,10 +172,11 @@ namespace LiteDB.Engine
             // otherwise insert as normal collection
             else
             {
-                result = _engine.Insert(into, GetResultset(), autoId);
+                result = _engine.InsertAsync(into, GetResultset(), autoId);
             }
 
             return new BsonDataReader(result);
         }
+        */
     }
 }

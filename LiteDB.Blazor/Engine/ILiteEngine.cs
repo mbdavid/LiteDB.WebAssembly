@@ -32,7 +32,7 @@ namespace LiteDB.Engine
         Task<bool> EnsureIndexAsync(string collection, string name, BsonExpression expression, bool unique);
         Task<bool> DropIndexAsync(string collection, string name);
 
-        Task<BsonValue> Pragma(string name);
+        BsonValue Pragma(string name);
         Task<bool> PragmaAsync(string name, BsonValue value);
     }
 }

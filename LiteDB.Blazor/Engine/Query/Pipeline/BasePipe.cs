@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -24,24 +26,24 @@ namespace LiteDB.Engine
         /// <summary>
         /// Abstract method to be implement according pipe workflow
         /// </summary>
-        public abstract IEnumerable<BsonDocument> Pipe(IEnumerable<IndexNode> nodes, QueryPlan query);
+        public abstract IAsyncEnumerable<BsonDocument> Pipe(IAsyncEnumerable<IndexNode> nodes, QueryPlan query);
 
         // load documents from document loader
-        protected IEnumerable<BsonDocument> LoadDocument(IEnumerable<IndexNode> nodes)
+        protected async IAsyncEnumerable<BsonDocument> LoadDocument(IAsyncEnumerable<IndexNode> nodes)
         {
-            foreach (var node in nodes)
+            await foreach (var node in nodes)
             {
-                yield return _lookup.Load(node);
+                yield return await _lookup.Load(node);
 
                 // check if transaction all full of pages to clear before continue
-                _transaction.Safepoint();
+                await _transaction.Safepoint();
             }
         }
 
         /// <summary>
         /// INCLUDE: Do include in result document according path expression - Works only with DocumentLookup
         /// </summary>
-        protected IEnumerable<BsonDocument> Include(IEnumerable<BsonDocument> source, BsonExpression path)
+        protected async IAsyncEnumerable<BsonDocument> Include(IAsyncEnumerable<BsonDocument> source, BsonExpression path)
         {
             // cached services
             string last = null;
@@ -51,7 +53,7 @@ namespace LiteDB.Engine
             CollectionIndex index = null;
             IDocumentLookup lookup = null;
 
-            foreach (var doc in source)
+            await foreach (var doc in source)
             {
                 foreach (var value in path.Execute(doc, _pragmas.Collation)
                                         .Where(x => x.IsDocument || x.IsArray)
@@ -60,7 +62,7 @@ namespace LiteDB.Engine
                     // if value is document, convert this ref document into full document (do another query)
                     if (value.IsDocument)
                     {
-                        DoInclude(value.AsDocument);
+                        await DoInclude(value.AsDocument);
                     }
                     else
                     {
@@ -69,16 +71,15 @@ namespace LiteDB.Engine
                             .Where(x => x.IsDocument)
                             .Select(x => x.AsDocument))
                         {
-                            DoInclude(item);
+                            await DoInclude(item);
                         }
                     }
-
                 }
 
                 yield return doc;
             }
 
-            void DoInclude(BsonDocument value)
+            async Task DoInclude(BsonDocument value)
             {
                 // works only if is a document
                 var refId = value["$id"];
@@ -93,7 +94,7 @@ namespace LiteDB.Engine
                     last = refCol.AsString;
 
                     // initialize services
-                    snapshot = _transaction.CreateSnapshot(LockMode.Read, last, false);
+                    snapshot = await _transaction.CreateSnapshot(LockMode.Read, last, false);
                     indexer = new IndexService(snapshot, _pragmas.Collation);
                     data = new DataService(snapshot);
 
@@ -105,12 +106,12 @@ namespace LiteDB.Engine
                 // fill only if index and ref node exists
                 if (index != null)
                 {
-                    var node = indexer.Find(index, refId, false, Query.Ascending);
+                    var node = await indexer.Find(index, refId, false, Query.Ascending);
 
                     if (node != null)
                     {
                         // load document based on dataBlock position
-                        var refDoc = lookup.Load(node);
+                        var refDoc = await lookup.Load(node);
 
                         //do not remove $id
                         value.Remove("$ref");
@@ -133,14 +134,14 @@ namespace LiteDB.Engine
         /// <summary>
         /// WHERE: Filter document according expression. Expression must be an Bool result
         /// </summary>
-        protected IEnumerable<BsonDocument> Filter(IEnumerable<BsonDocument> source, BsonExpression expr)
+        protected async IAsyncEnumerable<BsonDocument> Filter(IAsyncEnumerable<BsonDocument> source, BsonExpression expr)
         {
-            foreach(var doc in source)
+            await foreach(var doc in source)
             {
                 // checks if any result of expression is true
                 var result = expr.ExecuteScalar(doc, _pragmas.Collation);
 
-                if(result.IsBoolean && result.AsBoolean)
+                if (result.IsBoolean && result.AsBoolean)
                 {
                     yield return doc;
                 }
@@ -150,11 +151,8 @@ namespace LiteDB.Engine
         /// <summary>
         /// ORDER BY: Sort documents according orderby expression and order asc/desc
         /// </summary>
-        protected IEnumerable<BsonDocument> OrderBy(IEnumerable<BsonDocument> source, BsonExpression expr, int order, int offset, int limit)
+        protected IAsyncEnumerable<BsonDocument> OrderBy(IAsyncEnumerable<BsonDocument> source, BsonExpression expr, int order, int offset, int limit)
         {
-            var keyValues = source
-                .Select(x => new KeyValuePair<BsonValue, PageAddress>(expr.ExecuteScalar(x, _pragmas.Collation), x.RawId));
-
             throw new NotImplementedException();
             //using (var sorter = new SortService(_tempDisk, order, _pragmas))
             //{

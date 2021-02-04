@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -11,14 +13,14 @@ namespace LiteDB.Engine
         /// then any documents not updated are then attempted to insert.
         /// This will have the side effect of throwing if duplicate items are attempted to be inserted.
         /// </summary>
-        public int Upsert(string collection, IEnumerable<BsonDocument> docs, BsonAutoId autoId)
+        public async Task<int> UpsertAsync(string collection, IEnumerable<BsonDocument> docs, BsonAutoId autoId)
         {
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
             if (docs == null) throw new ArgumentNullException(nameof(docs));
 
-            return this.AutoTransaction(transaction =>
+            return await this.AutoTransaction(async transaction =>
             {
-                var snapshot = transaction.CreateSnapshot(LockMode.Write, collection, true);
+                var snapshot = await transaction.CreateSnapshot(LockMode.Write, collection, true);
                 var collectionPage = snapshot.CollectionPage;
                 var indexer = new IndexService(snapshot, _header.Pragmas.Collation);
                 var data = new DataService(snapshot);
@@ -28,12 +30,12 @@ namespace LiteDB.Engine
 
                 foreach (var doc in docs)
                 {
-                    transaction.Safepoint();
+                    await transaction.Safepoint();
 
                     // first try update document (if exists _id), if not found, do insert
-                    if (doc["_id"] == BsonValue.Null || this.UpdateDocument(snapshot, collectionPage, doc, indexer, data) == false)
+                    if (doc["_id"] == BsonValue.Null || await this.UpdateDocument(snapshot, collectionPage, doc, indexer, data) == false)
                     {
-                        this.InsertDocument(snapshot, doc, autoId, indexer, data);
+                        await this.InsertDocument(snapshot, doc, autoId, indexer, data);
                         count++;
                     }
                 }

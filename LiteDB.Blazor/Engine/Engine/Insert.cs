@@ -32,7 +32,7 @@ namespace LiteDB.Engine
                 {
                     await transaction.Safepoint();
 
-                    await this.InsertDocumentAsync(snapshot, doc, autoId, indexer, data);
+                    await this.InsertDocument(snapshot, doc, autoId, indexer, data);
 
                     count++;
                 }
@@ -44,7 +44,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Internal implementation of insert a document
         /// </summary>
-        private async Task InsertDocumentAsync(Snapshot snapshot, BsonDocument doc, BsonAutoId autoId, IndexService indexer, DataService data)
+        private async Task InsertDocument(Snapshot snapshot, BsonDocument doc, BsonAutoId autoId, IndexService indexer, DataService data)
         {
             // if no _id, use AutoId
             if (!doc.TryGetValue("_id", out var id))
@@ -52,12 +52,12 @@ namespace LiteDB.Engine
                 doc["_id"] = id =
                     autoId == BsonAutoId.ObjectId ? new BsonValue(ObjectId.NewObjectId()) :
                     autoId == BsonAutoId.Guid ? new BsonValue(Guid.NewGuid()) :
-                    this.GetSequence(snapshot, autoId);
+                    await this.GetSequence(snapshot, autoId);
             }
             else if(id.IsNumber)
             {
                 // update memory sequence of numeric _id
-                this.SetSequence(snapshot, id);
+                await this.SetSequence(snapshot, id);
             }
 
             // test if _id is a valid type

@@ -10,8 +10,8 @@ namespace LiteDB.Engine
     /// </summary>
     internal class QueryPipe : BasePipe
     {
-        public QueryPipe(TransactionService transaction, IDocumentLookup loader, SortDisk tempDisk, EnginePragmas pragmas)
-            : base(transaction, loader, tempDisk, pragmas)
+        public QueryPipe(TransactionService transaction, IDocumentLookup loader, EnginePragmas pragmas)
+            : base(transaction, loader, pragmas)
         {
         }
 
@@ -26,7 +26,7 @@ namespace LiteDB.Engine
         /// - IncludeAfter
         /// - Select
         /// </summary>
-        public override IEnumerable<BsonDocument> Pipe(IEnumerable<IndexNode> nodes, QueryPlan query)
+        public override async IAsyncEnumerable<BsonDocument> Pipe(IAsyncEnumerable<IndexNode> nodes, QueryPlan query)
         {
             // starts pipe loading document
             var source = this.LoadDocument(nodes);
@@ -63,26 +63,24 @@ namespace LiteDB.Engine
                 source = this.Include(source, path);
             }
 
-            // if is an aggregate query, run select transform over all resultset - will return a single value
-            if (query.Select.All)
+            var result = query.Select.All ?
+                this.SelectAll(source, query.Select.Expression) :
+                this.Select(source, query.Select.Expression);
+
+            await foreach(var doc in result)
             {
-                return this.SelectAll(source, query.Select.Expression);
-            }
-            // run select transform in each document and return a new document or value
-            else
-            {
-                return this.Select(source, query.Select.Expression);
+                yield return doc;
             }
         }
 
         /// <summary>
         /// Pipe: Transaform final result appling expressin transform. Can return document or simple values
         /// </summary>
-        private IEnumerable<BsonDocument> Select(IEnumerable<BsonDocument> source, BsonExpression select)
+        private async IAsyncEnumerable<BsonDocument> Select(IAsyncEnumerable<BsonDocument> source, BsonExpression select)
         {
             var defaultName = select.DefaultFieldName();
 
-            foreach (var doc in source)
+            await foreach (var doc in source)
             {
                 var value = select.ExecuteScalar(doc, _pragmas.Collation);
 
@@ -100,8 +98,10 @@ namespace LiteDB.Engine
         /// <summary>
         /// Pipe: Run select expression over all recordset
         /// </summary>
-        private IEnumerable<BsonDocument> SelectAll(IEnumerable<BsonDocument> source, BsonExpression select)
+        private IAsyncEnumerable<BsonDocument> SelectAll(IAsyncEnumerable<BsonDocument> source, BsonExpression select)
         {
+            throw new NotImplementedException();
+            /*
             var cached = new DocumentCacheEnumerable(source, _lookup);
 
             var defaultName = select.DefaultFieldName();
@@ -118,6 +118,7 @@ namespace LiteDB.Engine
                     yield return new BsonDocument { [defaultName] = value };
                 }
             }
+            */
         }
     }
 }

@@ -38,10 +38,17 @@
     <Compile Remove="Blazor\**" />
     <Compile Remove="Client\**" />
     <Compile Remove="Engine\Query\**" />
+    <Compile Remove="Engine\SystemCollections\**" />
     <EmbeddedResource Remove="Client\**" />
     <EmbeddedResource Remove="Engine\Query\**" />
+    <EmbeddedResource Remove="Engine\SystemCollections\**" />
     <None Remove="Client\**" />
     <None Remove="Engine\Query\**" />
+    <None Remove="Engine\SystemCollections\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Engine\Engine\SystemCollections.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -57,8 +64,6 @@
     <Compile Include="Engine\Query\Lookup\IDocumentLookup.cs" />
     <Compile Include="Engine\Query\Lookup\IndexKeyLoader.cs" />
     <Compile Include="Engine\Query\Pipeline\BasePipe.cs" />
-    <Compile Include="Engine\Query\Pipeline\DocumentCacheEnumerable.cs" />
-    <Compile Include="Engine\Query\Pipeline\GroupByPipe.cs" />
     <Compile Include="Engine\Query\Pipeline\QueryPipe.cs" />
     <Compile Include="Engine\Query\Query.cs" />
     <Compile Include="Engine\Query\QueryExecutor.cs" />

@@ -13,7 +13,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Create a new index (or do nothing if already exists) to a collection/field
         /// </summary>
-        public async Task<bool> EnsureIndex(string collection, string name, BsonExpression expression, bool unique)
+        public async Task<bool> EnsureIndexAsync(string collection, string name, BsonExpression expression, bool unique)
         {
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
             if (name.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(name));
@@ -97,7 +97,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// Drop an index from a collection
         /// </summary>
-        public async Task<bool> DropIndex(string collection, string name)
+        public async Task<bool> DropIndexAsync(string collection, string name)
         {
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
             if (name.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(name));

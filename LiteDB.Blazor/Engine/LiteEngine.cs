@@ -80,10 +80,10 @@ namespace LiteDB.Engine
                 _walIndex = new WalIndexService(_disk);
 
                 // restore wal index references, if exists
-                _walIndex.RestoreIndex(_header);
+                await _walIndex.RestoreIndex(_header);
 
                 // register system collections
-                this.InitializeSystemCollections();
+                // this.InitializeSystemCollections();
 
                 LOG("initialization completed", "ENGINE");
             }
@@ -129,7 +129,7 @@ namespace LiteDB.Engine
             if (disposing)
             {
                 // do a soft checkpoint (only if exclusive lock is possible)
-                if (_header?.Pragmas.Checkpoint > 0) _walIndex?.Checkpoint(true, true);
+                if (_header?.Pragmas.Checkpoint > 0) _walIndex?.Checkpoint();
 
                 // close all disk streams (and delete log if empty)
                 _disk?.Dispose();

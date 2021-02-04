@@ -79,6 +79,11 @@ namespace LiteDB
             Task.Run(async () => await _runtime.InvokeAsync<object>("localStorage.setItem", "ldb_length", _length));
         }
 
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            this.WriteAsync(buffer, offset, count).Wait();
+        }
+
         public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
             var content = Convert.ToBase64String(buffer, offset, count, Base64FormattingOptions.None);

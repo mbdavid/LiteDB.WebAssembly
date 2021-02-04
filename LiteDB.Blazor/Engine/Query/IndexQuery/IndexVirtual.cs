@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB.Engine
@@ -54,16 +56,16 @@ namespace LiteDB.Engine
             }
         }
 
-        public BsonDocument Load(IndexNode node)
+        public Task<BsonDocument> Load(IndexNode node)
         {
-            return node.Key as BsonDocument;
+            return Task.FromResult(node.Key as BsonDocument);
         }
 
-        public BsonDocument Load(PageAddress rawId)
+        public Task<BsonDocument> Load(PageAddress rawId)
         {
             if (_cache == null) throw new LiteException(0, $"OrderBy/GroupBy operation are supported only in virtual collection with less than {VIRTUAL_INDEX_MAX_CACHE} documents");
 
-            return _cache[rawId.PageID];
+            return Task.FromResult(_cache[rawId.PageID]);
         }
 
         public override string ToString()
