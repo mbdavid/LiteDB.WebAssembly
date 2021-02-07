@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -15,7 +17,7 @@ namespace LiteDB.Engine
         ///     SET [{key} = {exprValue}, {key} = {exprValue} | { newDoc }]
         /// [ WHERE {whereExpr} ]
         /// </summary>
-        private BsonDataReader ParseUpdate()
+        private async Task<BsonDataReader> ParseUpdate()
         {
             _tokenizer.ReadToken().Expect("UPDATE");
 
@@ -39,7 +41,7 @@ namespace LiteDB.Engine
             // read eof
             _tokenizer.ReadToken().Expect(TokenType.EOF, TokenType.SemiColon);
 
-            var result = _engine.UpdateMany(collection, transform, where);
+            var result = await _engine.UpdateManyAsync(collection, transform, where);
 
             return new BsonDataReader(result);
         }

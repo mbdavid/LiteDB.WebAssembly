@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -11,7 +13,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// DELETE {collection} WHERE {whereExpr}
         /// </summary>
-        private BsonDataReader ParseDelete()
+        private async Task<BsonDataReader> ParseDelete()
         {
             _tokenizer.ReadToken().Expect("DELETE");
 
@@ -31,7 +33,7 @@ namespace LiteDB.Engine
 
             _tokenizer.ReadToken();
 
-            var result = _engine.DeleteMany(collection, where);
+            var result = await _engine.DeleteManyAsync(collection, where);
 
             return new BsonDataReader(result);
         }

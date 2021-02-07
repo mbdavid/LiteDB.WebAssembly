@@ -21,7 +21,7 @@ namespace LiteDB
 
             var buffer = new byte[doc.GetBytesCount(true)]; 
 
-            using (var writer = new BufferWriterAsync(buffer))
+            using (var writer = new BufferWriter(buffer))
             {
                 writer.WriteDocument(doc, false);
             }
@@ -36,7 +36,7 @@ namespace LiteDB
         {
             if (buffer == null || buffer.Length == 0) throw new ArgumentNullException(nameof(buffer));
 
-            using (var reader = new BufferReaderAsync(buffer, utcDate))
+            using (var reader = new BufferReader(buffer, utcDate))
             {
                 return reader.ReadDocument(fields);
             }

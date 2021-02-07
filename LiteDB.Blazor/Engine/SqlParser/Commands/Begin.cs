@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -11,7 +13,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// BEGIN [ TRANS | TRANSACTION ]
         /// </summary>
-        private BsonDataReader ParseBegin()
+        private async Task<BsonDataReader> ParseBegin()
         {
             _tokenizer.ReadToken().Expect("BEGIN");
 
@@ -22,7 +24,7 @@ namespace LiteDB.Engine
                 _tokenizer.ReadToken().Expect(TokenType.EOF, TokenType.SemiColon);
             }
 
-            var transactionId = _engine.BeginTransAsync();
+            var transactionId = await _engine.BeginTransAsync();
 
             return new BsonDataReader(transactionId);
         }

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -12,7 +14,7 @@ namespace LiteDB.Engine
         /// DROP INDEX {collection}.{indexName}
         /// DROP COLLECTION {collection}
         /// </summary>
-        private BsonDataReader ParseDrop()
+        private async Task<BsonDataReader> ParseDrop()
         {
             _tokenizer.ReadToken().Expect("DROP");
 
@@ -26,7 +28,7 @@ namespace LiteDB.Engine
 
                 _tokenizer.ReadToken().Expect(TokenType.EOF, TokenType.SemiColon);
 
-                var result = _engine.DropIndex(collection, name);
+                var result = await _engine.DropIndexAsync(collection, name);
 
                 return new BsonDataReader(result);
             }
@@ -36,7 +38,7 @@ namespace LiteDB.Engine
 
                 _tokenizer.ReadToken().Expect(TokenType.EOF, TokenType.SemiColon);
 
-                var result = _engine.DropCollection(collection);
+                var result = await _engine.DropCollectionAsync(collection);
 
                 return new BsonDataReader(result);
             }

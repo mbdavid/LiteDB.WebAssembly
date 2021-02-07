@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -11,7 +13,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// CREATE [ UNQIUE ] INDEX {indexName} ON {collection} ({indexExpr})
         /// </summary>
-        private BsonDataReader ParseCreate()
+        private async Task<BsonDataReader> ParseCreate()
         {
             _tokenizer.ReadToken().Expect("CREATE");
 
@@ -45,7 +47,7 @@ namespace LiteDB.Engine
             // read EOF or ;
             _tokenizer.ReadToken().Expect(TokenType.EOF, TokenType.SemiColon);
 
-            var result = _engine.EnsureIndex(collection, name, expr, unique);
+            var result = await _engine.EnsureIndexAsync(collection, name, expr, unique);
 
             return new BsonDataReader(result);
         }

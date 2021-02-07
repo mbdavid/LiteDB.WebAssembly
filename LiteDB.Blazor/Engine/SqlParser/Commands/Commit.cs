@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -11,7 +13,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// COMMIT [ TRANS | TRANSACTION ]
         /// </summary>
-        private BsonDataReader ParseCommit()
+        private async Task<BsonDataReader> ParseCommit()
         {
             _tokenizer.ReadToken().Expect("COMMIT");
 
@@ -22,7 +24,7 @@ namespace LiteDB.Engine
                 _tokenizer.ReadToken().Expect(TokenType.EOF, TokenType.SemiColon);
             }
 
-            var result = _engine.CommitAsync();
+            var result = await _engine.CommitAsync();
 
             return new BsonDataReader(result);
         }

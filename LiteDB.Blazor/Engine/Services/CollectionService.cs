@@ -70,7 +70,7 @@ namespace LiteDB.Engine
             // create first index (_id pk) (must pass collectionPage because snapshot contains null in CollectionPage prop)
             var indexer = new IndexService(_snapshot, _header.Pragmas.Collation);
 
-            indexer.CreateIndex("_id", "$._id", true);
+            await indexer.CreateIndex("_id", "$._id", true);
 
             return collectionPage;
         }

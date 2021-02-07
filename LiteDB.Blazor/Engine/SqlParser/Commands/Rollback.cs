@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -11,7 +13,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// ROLLBACK [ TRANS | TRANSACTION ]
         /// </summary>
-        private BsonDataReader ParseRollback()
+        private async Task<BsonDataReader> ParseRollback()
         {
             _tokenizer.ReadToken().Expect("ROLLBACK");
 
@@ -22,7 +24,7 @@ namespace LiteDB.Engine
                 _tokenizer.ReadToken().Expect(TokenType.EOF, TokenType.SemiColon);
             }
 
-            var result = _engine.RollbackAsync();
+            var result = await _engine.RollbackAsync();
 
             return new BsonDataReader(result);
         }

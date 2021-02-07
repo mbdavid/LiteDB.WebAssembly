@@ -79,6 +79,20 @@ namespace LiteDB.Engine
         private TransactionService _transaction = null;
 
         /// <summary>
+        /// Return if current task exists
+        /// </summary>
+        internal bool HasTransaction() => _transaction != null;
+
+        /// <summary>
+        /// Dispose transaction and remove from global variable
+        /// </summary>
+        internal void ClearTransaction()
+        {
+            _transaction.Dispose();
+            _transaction = null;
+        }
+
+        /// <summary>
         /// Get current transaction or create a new one
         /// </summary>
         internal async Task<TransactionService> GetTransaction()
@@ -99,24 +113,26 @@ namespace LiteDB.Engine
         /// </summary>
         private async Task<T> AutoTransaction<T>(Func<TransactionService, Task<T>> fn)
         {
-            var isNew = _transaction == null;
+            var isNew = !this.HasTransaction();
             var transaction = await this.GetTransaction();
 
             try
             {
                 var result = await fn(transaction);
 
-                await transaction.Commit();
-
                 // if this transaction was auto-created for this operation, commit & dispose now
                 if (isNew)
                 {
+                    await transaction.Commit();
+
                     if (_header.Pragmas.Checkpoint > 0 &&
                         transaction.Mode == LockMode.Write &&
                         _disk.LogLength > (_header.Pragmas.Checkpoint * PAGE_SIZE))
                     {
                         await _walIndex.Checkpoint();
                     }
+
+                    this.ClearTransaction();
                 }
 
                 return result;

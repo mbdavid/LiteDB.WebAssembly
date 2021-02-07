@@ -51,9 +51,12 @@ namespace LiteDB.Engine
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
             if (transform == null) throw new ArgumentNullException(nameof(transform));
 
-            return await this.UpdateAsync(collection, transformDocs());
+            // add suport to UpdateAsync(string, IAsyncEnumerable)
+            //return await this.UpdateAsync(collection, transformDocs());
 
-            IEnumerable<BsonDocument> transformDocs()
+            throw new NotSupportedException();
+
+            async IAsyncEnumerable<BsonDocument> transformDocs()
             {
                 var q = new Query { Select = "$", ForUpdate = true };
 
@@ -62,9 +65,9 @@ namespace LiteDB.Engine
                     q.Where.Add(predicate);
                 }
 
-                using (var reader = this.Query(collection, q))
+                await using (var reader = await this.QueryAsync(collection, q))
                 {
-                    while (reader.Read())
+                    while (await reader.ReadAsync())
                     {
                         var doc = reader.Current.AsDocument;
 

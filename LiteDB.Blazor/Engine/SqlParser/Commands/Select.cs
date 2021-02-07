@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -23,7 +25,7 @@ namespace LiteDB.Engine
         ///  [ OFFSET {number} ]
         ///     [ FOR UPDATE ]
         /// </summary>
-        private IBsonDataReader ParseSelect()
+        private async Task<IBsonDataReader> ParseSelect()
         {
             // initialize query definition
             var query = new Query();
@@ -44,13 +46,8 @@ namespace LiteDB.Engine
 
             if (from.Type == TokenType.EOF || from.Type == TokenType.SemiColon)
             {
-                // select with no FROM - just run expression (avoid DUAL table, Mr. Oracle)
-                //TODO: i think will be better add all sql into engine
-                var result = query.Select.Execute(_collation.Value);
-
-                var defaultName = "expr";
-
-                return new BsonDataReader(result.Select(x => x.IsDocument ? x.AsDocument : new BsonDocument { [defaultName] = x }), null);
+                throw new NotImplementedException();
+                //return await _engine.QueryAsync("$dual??", query);
             }
             else if (from.Is("INTO"))
             {
@@ -175,7 +172,7 @@ namespace LiteDB.Engine
             // read eof/;
             _tokenizer.ReadToken().Expect(TokenType.EOF, TokenType.SemiColon);
 
-            return _engine.Query(collection, query);
+            return await _engine.QueryAsync(collection, query);
         }
 
         /// <summary>

@@ -19,14 +19,17 @@ namespace ConsoleApp
 
             await db.OpenAsync();
 
-            db.Insert("col1", new[] { new BsonDocument { ["name"] = "John" } }, BsonAutoId.Int32);
+            await db.InsertAsync("col1", new[] { new BsonDocument { ["name"] = "John" } }, BsonAutoId.Int32);
 
             var query = new Query();
             query.Where.Add("_id = 1");
 
-            var doc = db.Query("col1", query).ToArray().First();
+            var docs = await db.QueryAsync("col1", query);
 
-            Console.WriteLine(JsonSerializer.Serialize(doc));
+            await foreach(var doc in docs.ToAsyncEnumerable())
+            {
+                Console.WriteLine(JsonSerializer.Serialize(doc));
+            }
 
             Console.ReadKey();
 

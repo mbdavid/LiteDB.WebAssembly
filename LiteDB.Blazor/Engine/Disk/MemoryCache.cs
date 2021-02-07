@@ -289,7 +289,7 @@ namespace LiteDB.Engine
             // get segmentSize
             var segmentSize = _segmentSizes[Math.Min(_segmentSizes.Length - 1, _extends)];
 
-            if (_extends < _maxExtends)
+            if (_extends <= _maxExtends)
             {
                 // create big linear array in heap memory (LOH => 85Kb)
                 var buffer = new byte[PAGE_SIZE * segmentSize];

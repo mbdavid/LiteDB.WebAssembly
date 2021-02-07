@@ -18,7 +18,6 @@ namespace LiteDB.Engine
     {
         // instances from Engine
         private readonly HeaderPage _header;
-        private readonly EngineSettings _settings;
         private readonly DiskService _disk;
         private readonly WalIndexService _walIndex;
 

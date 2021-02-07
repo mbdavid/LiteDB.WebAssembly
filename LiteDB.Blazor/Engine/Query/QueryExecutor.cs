@@ -52,6 +52,7 @@ namespace LiteDB.Engine
         internal async Task<BsonDataReader> ExecuteQuery(bool executionPlan)
         {
             // get current transaction (if contains a explicit transaction) or a query-only transaction
+            var isNew = !_engine.HasTransaction();
             var transaction = await _engine.GetTransaction();
 
             //transaction.OpenCursors.Add(_cursor);
@@ -76,7 +77,7 @@ namespace LiteDB.Engine
 
                     if (isNew)
                     {
-                        _monitor.ReleaseTransaction(transaction);
+                        _engine.ClearTransaction();
                     }
 
                     yield break;
@@ -96,7 +97,7 @@ namespace LiteDB.Engine
 
                     if (isNew)
                     {
-                        _monitor.ReleaseTransaction(transaction);
+                        _engine.ClearTransaction();
                     }
 
                     yield break;
@@ -106,7 +107,7 @@ namespace LiteDB.Engine
                 var nodes = queryPlan.Index.Run(snapshot.CollectionPage, new IndexService(snapshot, _pragmas.Collation));
 
                 // get current query pipe: normal or groupby pipe
-                var pipe = queryPlan.GetPipe(transaction, snapshot, _sortDisk, _pragmas);
+                var pipe = queryPlan.GetPipe(transaction, snapshot, _pragmas);
 
                 try
                 {
@@ -114,7 +115,7 @@ namespace LiteDB.Engine
                     _cursor.Elapsed.Start();
 
                     // call safepoint just before return each document
-                    foreach (var doc in pipe.Pipe(nodes, queryPlan))
+                    await foreach (var doc in pipe.Pipe(nodes, queryPlan))
                     {
                         _cursor.Fetched++;
                         _cursor.Elapsed.Stop();
@@ -135,7 +136,7 @@ namespace LiteDB.Engine
 
                     if (isNew)
                     {
-                        _monitor.ReleaseTransaction(transaction);
+                        _engine.ClearTransaction();
                     }
                 }
             };

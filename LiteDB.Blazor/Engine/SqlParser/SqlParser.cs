@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -25,7 +27,7 @@ namespace LiteDB.Engine
             _collation = new Lazy<Collation>(() => new Collation(_engine.Pragma(Pragmas.COLLATION)));
         }
 
-        public IBsonDataReader Execute()
+        public async Task<IBsonDataReader> Execute()
         {
             var ahead = _tokenizer.LookAhead().Expect(TokenType.Word);
 
@@ -35,21 +37,21 @@ namespace LiteDB.Engine
             {
                 case "SELECT": 
                 case "EXPLAIN":
-                    return this.ParseSelect();
-                case "INSERT": return this.ParseInsert();
-                case "DELETE": return this.ParseDelete();
-                case "UPDATE": return this.ParseUpdate();
-                case "DROP": return this.ParseDrop();
-                case "RENAME": return this.ParseRename();
-                case "CREATE": return this.ParseCreate();
+                    return await this.ParseSelect();
+                case "INSERT": return await this.ParseInsert();
+                case "DELETE": return await this.ParseDelete();
+                case "UPDATE": return await this.ParseUpdate();
+                case "DROP": return await this.ParseDrop();
+                case "RENAME": return await this.ParseRename();
+                case "CREATE": return await this.ParseCreate();
 
-                case "CHECKPOINT": return this.ParseCheckpoint();
+                case "CHECKPOINT": return await this.ParseCheckpoint();
 
-                case "BEGIN": return this.ParseBegin();
-                case "ROLLBACK": return this.ParseRollback();
-                case "COMMIT": return this.ParseCommit();
+                case "BEGIN": return await this.ParseBegin();
+                case "ROLLBACK": return await this.ParseRollback();
+                case "COMMIT": return await this.ParseCommit();
 
-                case "PRAGMA": return this.ParsePragma();
+                case "PRAGMA": return await this.ParsePragma();
 
                 default:  throw LiteException.UnexpectedToken(ahead);
             }

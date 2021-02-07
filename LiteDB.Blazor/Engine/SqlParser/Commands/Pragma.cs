@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -13,7 +15,7 @@ namespace LiteDB.Engine
         /// PRAGMA [DB_PARAM] = VALUE
         /// PRAGMA [DB_PARAM]
         /// </summary>
-        private IBsonDataReader ParsePragma()
+        private async Task<IBsonDataReader> ParsePragma()
         {
             _tokenizer.ReadToken().Expect("PRAGMA");
 
@@ -41,7 +43,7 @@ namespace LiteDB.Engine
                 // read last ; \ <eof>
                 _tokenizer.ReadToken().Expect(TokenType.EOF, TokenType.SemiColon);
 
-                var result = _engine.Pragma(name, value);
+                var result = await _engine.PragmaAsync(name, value);
 
                 return new BsonDataReader(result);
             }

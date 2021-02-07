@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -11,7 +13,7 @@ namespace LiteDB.Engine
         /// <summary>
         /// INSERT INTO {collection} VALUES {doc0} [, {docN}] [ WITH ID={type} ] ]
         /// </summary>
-        private BsonDataReader ParseInsert()
+        private async Task<BsonDataReader> ParseInsert()
         {
             _tokenizer.ReadToken().Expect("INSERT");
             _tokenizer.ReadToken().Expect("INTO");
@@ -26,7 +28,7 @@ namespace LiteDB.Engine
             // will validate EOF or ;
             var docs = this.ParseListOfDocuments();
 
-            var result = _engine.Insert(collection, docs, autoId);
+            var result = await _engine.InsertAsync(collection, docs, autoId);
 
             return new BsonDataReader(result);
         }

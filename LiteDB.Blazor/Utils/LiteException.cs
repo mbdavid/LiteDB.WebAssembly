@@ -296,7 +296,6 @@ namespace LiteDB
             sb.Append($"Page Type: {page.PageType}. ");
             sb.Append($"Prev/Next: {page.PrevPageID}/{page.NextPageID}. ");
             sb.Append($"UniqueID: {page.Buffer.UniqueID}. ");
-            sb.Append($"ShareCounter: {page.Buffer.ShareCounter}. ");
 
             return new LiteException(0, sb.ToString());
         }

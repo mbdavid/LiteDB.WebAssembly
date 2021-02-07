@@ -49,11 +49,11 @@ namespace LiteDB.Engine
                 LOG($"create index `{collection}.{name}`", "COMMAND");
 
                 // create index head
-                var index = indexer.CreateIndex(name, expression.Source, unique);
+                var index = await indexer.CreateIndex(name, expression.Source, unique);
                 var count = 0u;
 
                 // read all objects (read from PK index)
-                foreach (var pkNode in new IndexAll("_id", LiteDB.Query.Ascending).Run(collectionPage, indexer))
+                await foreach (var pkNode in new IndexAll("_id", LiteDB.Query.Ascending).Run(collectionPage, indexer))
                 {
                     await using (var reader = await BufferReaderAsync.CreateAsync(data.Read(pkNode.DataBlock)))
                     {
