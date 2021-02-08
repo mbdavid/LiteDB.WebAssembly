@@ -78,9 +78,6 @@ namespace LiteDB.Engine
         {
             ENSURE(_state == TransactionState.Active, "transaction must be active to create new snapshot");
 
-            // check for readonly database
-            if (mode == LockMode.Write) throw new LiteException(0, "Database was initialized as read only. No write operations are supported");
-
             if (_snapshots.TryGetValue(collection, out var snapshot))
             {
                 // if current snapshot are ReadOnly but request is about Write mode, dispose read and re-create new in WriteMode

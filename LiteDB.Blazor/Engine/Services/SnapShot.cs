@@ -36,7 +36,7 @@ namespace LiteDB.Engine
         // expose
         public LockMode Mode => _mode;
         public string CollectionName => _collectionName;
-        public CollectionPage CollectionPage => _collectionPage;
+        public CollectionPage CollectionPage { get => _collectionPage; set => _collectionPage = value; }
         public ICollection<BasePage> LocalPages => _localPages.Values;
         public int ReadVersion => _readVersion;
 

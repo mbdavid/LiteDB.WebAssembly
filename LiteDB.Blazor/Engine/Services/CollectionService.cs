@@ -62,6 +62,9 @@ namespace LiteDB.Engine
 
             // create new collection page
             var collectionPage = await _snapshot.NewPage<CollectionPage>();
+
+            _snapshot.CollectionPage = collectionPage;
+
             var pageID = collectionPage.PageID;
 
             // insert collection name/pageID in header only in commit operation
