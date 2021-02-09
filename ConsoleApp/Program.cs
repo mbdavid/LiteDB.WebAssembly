@@ -4,6 +4,7 @@ using LiteDB.Engine;
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace ConsoleApp
 {
@@ -13,10 +14,13 @@ namespace ConsoleApp
 
         static void Main(string[] args)
         {
-            MainAsync(args);
+            MainAsync(args).Wait();
+
+            Console.WriteLine("End");
+            Console.ReadKey();
         }
 
-        static async void MainAsync(string[] args)
+        static async Task MainAsync(string[] args)
         {
             File.Delete(DATA_PATH);
 
@@ -28,10 +32,10 @@ namespace ConsoleApp
                     {
                         await db.OpenAsync();
 
-                        //await db.InsertAsync("col1", new[] { new BsonDocument { ["name"] = "John" } }, BsonAutoId.Int32);
+                        await db.InsertAsync("col1", new[] { new BsonDocument { ["name"] = "John" } }, BsonAutoId.Int32);
 
                         //await stream.FlushAsync();
-                        throw new Exception("error aqui");
+                        //throw new Exception("error aqui");
 
                     }
                     catch (Exception ex)
@@ -55,8 +59,6 @@ namespace ConsoleApp
             }*/
 
 
-            Console.WriteLine("End");
-            Console.ReadKey();
 
         }
     }
