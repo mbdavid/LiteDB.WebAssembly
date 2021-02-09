@@ -119,8 +119,11 @@ namespace LiteDB.Engine
             // update buffer
             header.UpdateBuffer();
 
+            // update position
+            stream.Position = 0;
+
             // write async header page
-            await stream.WriteAsync(buffer.Array, buffer.Offset, PAGE_SIZE);
+            await stream.WriteAsync(buffer.Array.AsMemory(buffer.Offset, PAGE_SIZE));
 
             await stream.FlushAsync();
 
