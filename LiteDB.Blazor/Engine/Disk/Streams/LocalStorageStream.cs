@@ -3,14 +3,15 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 using static LiteDB.Constants;
 
-namespace LiteDB
+namespace LiteDB.Engine
 {
-    internal class LocalStorageStream : Stream
+    public class LocalStorageStream : Stream
     {
         private const int PAD_PAGE = 5;
 
@@ -28,9 +29,14 @@ namespace LiteDB
 
         public static async Task<LocalStorageStream> CreateAsync(IJSRuntime runtime)
         {
-            var length = await runtime.InvokeAsync<int>("localStorage.getItem", "ldb_length");
+            var length = await runtime.InvokeAsync<JsonElement>("localStorage.getItem", "ldb_length");
 
-            return new LocalStorageStream(runtime, length);
+            var l = 
+                length.ValueKind == JsonValueKind.Null ? 0 :
+                length.ValueKind == JsonValueKind.String ? Convert.ToInt32(length.GetString()) :
+                length.GetInt32();
+
+            return new LocalStorageStream(runtime, l);
         }
 
         public override bool CanRead => true;

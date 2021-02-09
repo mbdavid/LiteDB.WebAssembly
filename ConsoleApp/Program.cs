@@ -24,39 +24,32 @@ namespace ConsoleApp
         {
             File.Delete(DATA_PATH);
 
-            using (var stream = new FileStream(DATA_PATH, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite, 8192, FileOptions.Asynchronous))
+            using (var stream = new FileStream(DATA_PATH, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite, 8192, FileOptions.Asynchronous))
+            using (var db = new LiteEngine(stream))
             {
-                using (var db = new LiteEngine(stream))
+                await db.OpenAsync();
+
+                var count = await db.InsertAsync("col1", new[] 
                 {
-                    try
-                    {
-                        await db.OpenAsync();
+                    new BsonDocument { ["name"] = "John" },
+                    new BsonDocument { ["name"] = "Doe" },
+                }, 
+                BsonAutoId.Int32);
 
-                        await db.InsertAsync("col1", new[] { new BsonDocument { ["name"] = "John" } }, BsonAutoId.Int32);
+                Console.WriteLine("Inserted: " + count);
 
-                        //await stream.FlushAsync();
-                        //throw new Exception("error aqui");
+                var q = new Query();
+                q.Where.Add("_id = 1");
 
-                    }
-                    catch (Exception ex)
-                    {
-                        ;
-                    }
+                var dados = await db.QueryAsync("col1", q);
+
+                await foreach(var doc in dados.ToAsyncEnumerable())
+                {
+                    Console.WriteLine(doc.ToString());
                 }
 
-                ;
             }
 
-            /*
-            var query = new Query();
-            query.Where.Add("_id = 1");
-
-            var docs = await db.QueryAsync("col1", query);
-
-            await foreach(var doc in docs.ToAsyncEnumerable())
-            {
-                Console.WriteLine(JsonSerializer.Serialize(doc));
-            }*/
 
 
 

@@ -88,6 +88,7 @@ namespace LiteDB.Engine
         /// </summary>
         internal void ClearTransaction()
         {
+            _locker.Release();
             _transaction.Dispose();
             _transaction = null;
         }

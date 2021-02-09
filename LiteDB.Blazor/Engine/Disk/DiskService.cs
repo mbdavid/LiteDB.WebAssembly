@@ -96,7 +96,7 @@ namespace LiteDB.Engine
 
             // define start/end position for log content
             _logStartPosition = (_header.LastPageID + 1) * PAGE_SIZE;
-            _logEndPosition = _logStartPosition; // will be updated by RestoreIndex
+            _logEndPosition = _logStartPosition; // will be updated/fixed by RestoreIndex
         }
 
         #endregion

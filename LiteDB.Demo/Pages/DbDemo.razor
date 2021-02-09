@@ -1,74 +1,51 @@
 ﻿@page "/db-demo"
-@inject LiteDB.Blazor.ILiteDatabaseFactory _dbFactory;
+@inject IJSRuntime _runtime;
 
 <h1>LiteDB for Blazor WebAssembly</h1>
 
-<button class="btn btn-primary" disabled="@(_db != null)" @onclick="OpenDatabase">Open Database</button>
-<button class="btn btn-primary" disabled="@(_db == null)" @onclick="CloseDatabase">Close Database</button>
-<button class="btn btn-primary" disabled="@(_db == null)" @onclick="InsertPerson">Insert [Person]</button>
-<button class="btn btn-primary" disabled="@(_db == null)" @onclick="CountCollection">Count [Person]</button>
-<button class="btn btn-primary" disabled="@(_db == null)" @onclick="QueryCollection">Query [Person Id=3]</button>
+<button class="btn btn-primary" hidden="@(_db != null)" @onclick="OpenDatabase">Open Database</button>
+<button class="btn btn-primary" hidden="@(_db == null)" @onclick="InsertPerson">Insert</button>
+<button class="btn btn-primary" hidden="@(_db == null)" @onclick="QueryCollection">Query All</button>
 
 <pre class="log">@_log.ToString()</pre>
 
 @code {
 
-    private readonly System.Text.StringBuilder _log = new System.Text.StringBuilder();
+    private readonly StringBuilder _log = new StringBuilder();
     private readonly Random _rnd = new Random();
 
-    private LiteDB.ILiteDatabase _db = null;
+    private LiteEngine _db;
 
-    // private LiteDB.LiteDatabase _db = someFactory.GetDatabase(IJSRuntime);
-
-    public class Person
+    private async Task OpenDatabase()
     {
-        public int Id { get; set; }
-        public string Name { get; set; }
-        public int Age { get; set; }
-        public override string ToString() => $"{{ Id: {Id}, Name: {Name}, Age: {Age} }}";
-    }
+        var stream = await LocalStorageStream.CreateAsync(_runtime);
 
-    private async void OpenDatabase()
-    {
-        _db = await _dbFactory.GetDatabaseAsync();
+        _db = new LiteEngine(stream);
+
+        await _db.OpenAsync();
+
         _log.AppendLine("database opened");
     }
 
-    private void CloseDatabase()
+    private async Task InsertPerson()
     {
-        _db.Dispose();
-        _db = null;
+        var person = new BsonDocument { ["Name"] = "John Doe " + Guid.NewGuid(), ["Age"] = _rnd.Next(10, 90) };
 
-        _log.AppendLine("database closed");
-    }
-
-    private void InsertPerson()
-    {
-        var person = new Person { Name = "John Doe " + Guid.NewGuid(), Age = _rnd.Next(10, 90) };
-
-        var collection = _db.GetCollection<Person>("person");
-
-        collection.Insert(person);
+        await _db.InsertAsync("col1", new[] { person }, BsonAutoId.Guid);
 
         _log.AppendLine($"inserted new person: {person}");
-
     }
 
-    private void CountCollection()
+    private async Task QueryCollection()
     {
-        var collection = _db.GetCollection<Person>("person");
+        var query = new Query(); // all
+        var result = await _db.QueryAsync("col1", query);
 
-        var count = collection.Count();
+        _log.AppendLine("query results");
 
-        _log.AppendLine($"person counter: {count}");
-    }
-
-    private void QueryCollection()
-    {
-        var collection = _db.GetCollection<Person>("person");
-
-        var person = collection.FindById(3);
-
-        _log.AppendLine($"person counter: {(person?.ToString() ?? "null")}");
+        await foreach(var person in result.ToAsyncEnumerable())
+        {
+            _log.AppendLine($"  - {(person?.ToString() ?? "null")}");
+        }
     }
 }

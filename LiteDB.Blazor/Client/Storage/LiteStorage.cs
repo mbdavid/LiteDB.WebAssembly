@@ -34,7 +34,7 @@ namespace LiteDB
 
             var fileId = _db.Mapper.Serialize(typeof(TFileId), id);
 
-            var file = _files.FindById(fileId);
+            var file = _files.FindByIdAsync(fileId);
 
             if (file == null) return null;
 
@@ -48,7 +48,7 @@ namespace LiteDB
         /// </summary>
         public IEnumerable<LiteFileInfo<TFileId>> Find(BsonExpression predicate)
         {
-            var query = _files.Query();
+            var query = _files.QueryAsync();
 
             if (predicate != null)
             {
@@ -173,7 +173,7 @@ namespace LiteDB
 
             file.Metadata = metadata ?? new BsonDocument();
 
-            _files.Update(file);
+            _files.UpdateAsync(file);
 
             return true;
         }

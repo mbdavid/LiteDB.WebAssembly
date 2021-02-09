@@ -59,7 +59,7 @@ namespace LiteDB
                 }
 
                 // insert chunk part
-                _chunks.Insert(chunk);
+                _chunks.InsertAsync(chunk);
             }
 
             // if stream was closed/flush, update file too
@@ -68,7 +68,7 @@ namespace LiteDB
                 _file.UploadDate = DateTime.Now;
                 _file.Length = _streamPosition;
 
-                _files.Upsert(_file);
+                _files.UpsertAsync(_file);
             }
 
             _buffer = new MemoryStream();

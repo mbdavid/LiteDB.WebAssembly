@@ -39,7 +39,7 @@ namespace LiteDB
         {
             // check if there is no more chunks in this file
             var chunk = _chunks
-                .FindOne("_id = { f: @0, n: @1 }", _fileId, index);
+                .FindOneAsync("_id = { f: @0, n: @1 }", _fileId, index);
 
             // if chunk is null there is no more chunks
             return chunk?["data"].AsBinary;
