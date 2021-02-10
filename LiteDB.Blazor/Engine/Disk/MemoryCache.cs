@@ -61,6 +61,7 @@ namespace LiteDB.Engine
         {
             _stream = stream;
             _segmentSizes = memorySegmentSizes;
+            _maxExtends = maxExtends;
 
             this.Extend();
         }

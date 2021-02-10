@@ -1,11 +1,12 @@
 ﻿@page "/db-demo"
-@inject IJSRuntime _runtime;
+@inject ILiteEngine _db;
 
 <h1>LiteDB for Blazor WebAssembly</h1>
 
-<button class="btn btn-primary" hidden="@(_db != null)" @onclick="OpenDatabase">Open Database</button>
-<button class="btn btn-primary" hidden="@(_db == null)" @onclick="InsertPerson">Insert</button>
-<button class="btn btn-primary" hidden="@(_db == null)" @onclick="QueryCollection">Query All</button>
+<button class="btn btn-primary" hidden="@(!_db.IsOpen)" @onclick="OpenDatabase">Open Database</button>
+<button class="btn btn-primary" hidden="@(_db.IsOpen)" @onclick="InsertPerson">Insert</button>
+<button class="btn btn-primary" hidden="@(_db.IsOpen)" @onclick="QueryCollection">Query All</button>
+<button class="btn btn-primary" hidden="@(_db.IsOpen)" @onclick="Drop">Drop Database</button>
 
 <pre class="log">@_log.ToString()</pre>
 
@@ -14,17 +15,17 @@
     private readonly StringBuilder _log = new StringBuilder();
     private readonly Random _rnd = new Random();
 
-    private LiteEngine _db;
-
     private async Task OpenDatabase()
     {
-        var stream = await LocalStorageStream.CreateAsync(_runtime);
-
-        _db = new LiteEngine(stream);
-
         await _db.OpenAsync();
 
         _log.AppendLine("database opened");
+    }
+
+    private async Task Drop()
+    {
+        _db.Dispose();
+        _db = null;
     }
 
     private async Task InsertPerson()
@@ -43,7 +44,7 @@
 
         _log.AppendLine("query results");
 
-        await foreach(var person in result.ToAsyncEnumerable())
+        await foreach (var person in result.ToAsyncEnumerable())
         {
             _log.AppendLine($"  - {(person?.ToString() ?? "null")}");
         }

@@ -192,27 +192,24 @@ namespace LiteDB.Engine
                 // in commit with header page change, last page will be header
                 if (commit && _transPages.HeaderChanged)
                 {
-                    lock(_header)
-                    {
-                        // update this confirm page with current transactionID
-                        _header.TransactionID = _transactionID;
+                    // update this confirm page with current transactionID
+                    _header.TransactionID = _transactionID;
 
-                        // this header page will be marked as confirmed page in log file
-                        _header.IsConfirmed = true;
+                    // this header page will be marked as confirmed page in log file
+                    _header.IsConfirmed = true;
 
-                        // invoke all header callbacks (new/drop collections)
-                        _transPages.OnCommit(_header);
+                    // invoke all header callbacks (new/drop collections)
+                    _transPages.OnCommit(_header);
 
-                        // clone header page
-                        var buffer = _header.UpdateBuffer();
-                        var clone = _disk.Cache.NewPage();
+                    // clone header page
+                    var buffer = _header.UpdateBuffer();
+                    var clone = _disk.Cache.NewPage();
 
-                        // mem copy from current header to new header clone
-                        Buffer.BlockCopy(buffer.Array, buffer.Offset, clone.Array, clone.Offset, clone.Count);
+                    // mem copy from current header to new header clone
+                    Buffer.BlockCopy(buffer.Array, buffer.Offset, clone.Array, clone.Offset, clone.Count);
 
-                        // persist header in log file
-                        yield return clone;
-                    }
+                    // persist header in log file
+                    yield return clone;
                 }
 
             };

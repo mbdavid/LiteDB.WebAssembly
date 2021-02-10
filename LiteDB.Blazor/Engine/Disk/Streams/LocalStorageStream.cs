@@ -11,32 +11,30 @@ using static LiteDB.Constants;
 
 namespace LiteDB.Engine
 {
-    public class LocalStorageStream : Stream
+    public class LocalStorageStream : Stream, IAsyncInitialize
     {
         private const int PAD_PAGE = 5;
+        private const string LENGTH_KEY = "ldb_length";
 
         private IJSRuntime _runtime;
         private long _position = 0;
         private long _length = 0;
 
-        private string _pageKey => "ldb_page_" + (_position / PAGE_SIZE).ToString().PadLeft(PAD_PAGE, '0');
+        private string GetKey(long? p = null) => "ldb_page_" + ((p ?? _position) / PAGE_SIZE).ToString().PadLeft(PAD_PAGE, '0');
 
-        private LocalStorageStream(IJSRuntime runtime, long length)
+        public LocalStorageStream(IJSRuntime runtime)
         {
             _runtime = runtime;
-            _length = length;
         }
 
-        public static async Task<LocalStorageStream> CreateAsync(IJSRuntime runtime)
+        public async Task InitializeAsync()
         {
-            var length = await runtime.InvokeAsync<JsonElement>("localStorage.getItem", "ldb_length");
+            var length = await _runtime.InvokeAsync<JsonElement>("localStorage.getItem", LENGTH_KEY);
 
-            var l = 
+            _length = 
                 length.ValueKind == JsonValueKind.Null ? 0 :
                 length.ValueKind == JsonValueKind.String ? Convert.ToInt32(length.GetString()) :
                 length.GetInt32();
-
-            return new LocalStorageStream(runtime, l);
         }
 
         public override bool CanRead => true;
@@ -55,10 +53,23 @@ namespace LiteDB.Engine
 
         public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
-            var content = await _runtime.InvokeAsync<string>("localStorage.getItem", _pageKey);
+            var content = await _runtime.InvokeAsync<JsonElement>("localStorage.getItem", this.GetKey());
+
+            _position += count;
+
+            if (content.ValueKind == JsonValueKind.Null)
+            {
+                // clear buffer
+                for(var i = offset; i < offset + count; i++)
+                {
+                    buffer[i] = 0;
+                }
+                
+                return count;
+            }
 
             // there is no method to read base64 into buffer array directly???
-            var data = Convert.FromBase64String(content);
+            var data = Convert.FromBase64String(content.GetString());
 
             System.Buffer.BlockCopy(data, 0, buffer, offset, count);
 
@@ -82,7 +93,7 @@ namespace LiteDB.Engine
             _length = value;
 
             // run async
-            Task.Run(async () => await _runtime.InvokeAsync<object>("localStorage.setItem", "ldb_length", _length));
+            Task.Run(async () => await _runtime.InvokeAsync<object>("localStorage.setItem", LENGTH_KEY, _length));
         }
 
         public override void Write(byte[] buffer, int offset, int count)
@@ -94,7 +105,7 @@ namespace LiteDB.Engine
         {
             var content = Convert.ToBase64String(buffer, offset, count, Base64FormattingOptions.None);
 
-            await _runtime.InvokeAsync<object>("localStorage.setItem", _pageKey, content);
+            await _runtime.InvokeAsync<object>("localStorage.setItem", this.GetKey(), content);
 
             _position += count;
 
@@ -102,8 +113,21 @@ namespace LiteDB.Engine
             {
                 _length = _position;
 
-                await _runtime.InvokeAsync<object>("localStorage.setItem", "ldb_length", _length);
+                await _runtime.InvokeAsync<object>("localStorage.setItem", LENGTH_KEY, _length);
             }
+        }
+
+        /// <summary>
+        /// Clear all content from LocalStorage
+        /// </summary>
+        public async Task Clear()
+        {
+            for(var i = 0; i < _length; i+= PAGE_SIZE)
+            {
+                await _runtime.InvokeAsync<object>("localStorage.removeItem", this.GetKey(i));
+            }
+
+            await _runtime.InvokeAsync<object>("localStorage.removeItem", LENGTH_KEY);
         }
     }
 }

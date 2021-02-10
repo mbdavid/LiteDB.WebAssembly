@@ -32,7 +32,7 @@ namespace LiteDB.Engine
 
         private readonly Collation _collation;
 
-        private bool _disposed = false;
+        private bool _disposed = true;
 
         #endregion
 
@@ -64,6 +64,9 @@ namespace LiteDB.Engine
 
             try
             {
+                // open async stream
+                if (_stream is IAsyncInitialize s) await s.InitializeAsync();
+
                 // initialize disk service (will create database if needed)
                 _disk = await DiskService.CreateAsync(_stream, _collation, MEMORY_SEGMENT_SIZES, MAX_EXTENDS);
 
@@ -84,6 +87,7 @@ namespace LiteDB.Engine
 
                 // register system collections
                 // this.InitializeSystemCollections();
+                _disposed = false;
 
                 LOG("initialization completed", "ENGINE");
             }
@@ -98,6 +102,11 @@ namespace LiteDB.Engine
         }
 
         #endregion
+
+        /// <summary>
+        /// Return if engine already open
+        /// </summary>
+        public bool IsOpen => _disposed == false;
 
         /// <summary>
         /// Run checkpoint command to copy log file into data file

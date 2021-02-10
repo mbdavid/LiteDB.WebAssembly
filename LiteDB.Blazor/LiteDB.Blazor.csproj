@@ -35,7 +35,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Blazor\**" />
     <Compile Remove="Client\**" />
     <Compile Remove="Engine\Query\**" />
     <Compile Remove="Engine\SystemCollections\**" />
@@ -85,6 +84,7 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Engine\Disk\Serializer\Sync\" />
+    <Folder Include="Blazor\" />
   </ItemGroup>
   <!-- End References -->
 

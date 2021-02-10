@@ -7,6 +7,7 @@ namespace LiteDB.Engine
     public interface ILiteEngine : IDisposable
     {
         Task OpenAsync();
+        bool IsOpen { get; }
 
         Task<int> CheckpointAsync();
 

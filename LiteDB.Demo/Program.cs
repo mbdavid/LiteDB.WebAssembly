@@ -1,7 +1,10 @@
+using LiteDB.Engine;
+
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.JSInterop;
 
 using System;
 using System.Collections.Generic;
@@ -19,6 +22,8 @@ namespace LiteDB.Demo
             builder.RootComponents.Add<App>("#app");
 
             builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
+
+            builder.Services.AddTransient<ILiteEngine>(sp => new LiteEngine(new LocalStorageStream(sp.GetService<IJSRuntime>())));
 
             await builder.Build().RunAsync();
         }

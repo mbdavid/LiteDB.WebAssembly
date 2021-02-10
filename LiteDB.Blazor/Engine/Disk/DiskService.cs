@@ -142,20 +142,6 @@ namespace LiteDB.Engine
         }
 
         /// <summary>
-        /// Read bytes from stream into buffer slice
-        /// </summary>
-        private async Task ReadStream(Stream stream, long position, BufferSlice buffer)
-        {
-            // can't test "Length" from out-to-date stream
-            // ENSURE(stream.Length <= position - PAGE_SIZE, "can't be read from beyond file length");
-            stream.Position = position;
-
-            await stream.ReadAsync(buffer.Array, buffer.Offset, buffer.Count);
-
-            DEBUG(buffer.All(0) == false, "check if are not reading out of file length");
-        }
-
-        /// <summary>
         /// Request for a empty, writable non-linked page (same as DiskService.NewPage)
         /// </summary>
         public PageBuffer NewPage()
