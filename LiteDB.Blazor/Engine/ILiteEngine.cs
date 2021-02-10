@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace LiteDB.Engine
 {
-    public interface ILiteEngine : IDisposable
+    public interface ILiteEngine : IAsyncDisposable
     {
         Task OpenAsync();
         bool IsOpen { get; }

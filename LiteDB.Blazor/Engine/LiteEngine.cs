@@ -96,7 +96,8 @@ namespace LiteDB.Engine
                 LOG(ex.Message, "ERROR");
 
                 // explicit dispose (but do not run shutdown operation)
-                this.Dispose(true);
+                await this.DisposeAsync();
+
                 throw;
             }
         }
@@ -111,45 +112,37 @@ namespace LiteDB.Engine
         /// <summary>
         /// Run checkpoint command to copy log file into data file
         /// </summary>
-        public async Task<int> CheckpointAsync() => await _walIndex.Checkpoint();
-
-        public void Dispose()
+        public async Task<int> CheckpointAsync()
         {
-            // dispose data file
-            this.Dispose(true);
-            GC.SuppressFinalize(this);
-        }
+            if (_disposed == true) throw LiteException.DatabaseClosed();
 
-        ~LiteEngine()
-        {
-            this.Dispose(false);
+            return await _walIndex.Checkpoint();
         }
 
         /// <summary>
         /// Shutdown process:
         /// - [[[[DESCRIBE]]]]
         /// </summary>
-        protected virtual void Dispose(bool disposing)
+        public async ValueTask DisposeAsync()
         {
             // this method can be called from Ctor, so many 
             // of this members can be null yet (even if are readonly). 
             if (_disposed) return;
 
-            if (disposing)
-            {
-                // do a soft checkpoint (only if exclusive lock is possible)
-                if (_header?.Pragmas.Checkpoint > 0) _walIndex?.Checkpoint();
+            _disposed = true;
 
-                // close all disk streams (and delete log if empty)
-                _disk?.Dispose();
+            // do a soft checkpoint (only if exclusive lock is possible)
+            if (_header?.Pragmas.Checkpoint > 0) await _walIndex?.Checkpoint();
 
-                // dispose lockers
-                _locker.Dispose();
-            }
+            // close all disk streams (and delete log if empty)
+            _disk?.Dispose();
+
+            // dispose lockers
+            _locker.Dispose();
 
             LOG("engine disposed", "ENGINE");
 
-            _disposed = true;
         }
+
     }
 }

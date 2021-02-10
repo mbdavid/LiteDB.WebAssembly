@@ -22,12 +22,14 @@ namespace ConsoleApp
 
         static async Task MainAsync(string[] args)
         {
-            //File.Delete(DATA_PATH);
-            /*
+            File.Delete(DATA_PATH);
+            
             using (var stream = new FileStream(DATA_PATH, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite, 8192, FileOptions.Asynchronous))
-            using (var db = new LiteEngine(stream))
+            await using (var db = new LiteEngine(stream))
             {
                 await db.OpenAsync();
+
+                await db.PragmaAsync("CHECKPOINT", 0);
 
                 var count = await db.InsertAsync("col1", new[]
                 {
@@ -37,12 +39,14 @@ namespace ConsoleApp
                 BsonAutoId.Int32);
 
                 Console.WriteLine("Inserted: " + count);
-            }*/
+            }
+            
 
             using (var stream = new FileStream(DATA_PATH, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite, 8192, FileOptions.Asynchronous))
-            using (var db = new LiteEngine(stream))
+            await using (var db = new LiteEngine(stream))
             {
                 await db.OpenAsync();
+                /*
 
                 var q = new Query();
                 //q.Where.Add("_id = 1");
@@ -53,7 +57,8 @@ namespace ConsoleApp
                 {
                     Console.WriteLine(doc.ToString());
                 }
-
+                */
+                await db.CheckpointAsync();
             }
 
 

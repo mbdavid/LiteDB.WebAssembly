@@ -3,10 +3,11 @@
 
 <h1>LiteDB for Blazor WebAssembly</h1>
 
-<button class="btn btn-primary" hidden="@(!_db.IsOpen)" @onclick="OpenDatabase">Open Database</button>
-<button class="btn btn-primary" hidden="@(_db.IsOpen)" @onclick="InsertPerson">Insert</button>
-<button class="btn btn-primary" hidden="@(_db.IsOpen)" @onclick="QueryCollection">Query All</button>
-<button class="btn btn-primary" hidden="@(_db.IsOpen)" @onclick="Drop">Drop Database</button>
+<button class="btn btn-primary" hidden="@(_db.IsOpen)" @onclick="OpenDatabase">Open</button>
+<button class="btn btn-primary" hidden="@(!_db.IsOpen)" @onclick="CloseDatabase">Close</button>
+<button class="btn btn-primary" hidden="@(!_db.IsOpen)" @onclick="InsertPerson">Insert</button>
+<button class="btn btn-primary" hidden="@(!_db.IsOpen)" @onclick="QueryCollection">Query All</button>
+<button class="btn btn-primary" hidden="@(!_db.IsOpen)" @onclick="Checkpoint">Checkpoint</button>
 
 <pre class="log">@_log.ToString()</pre>
 
@@ -22,10 +23,11 @@
         _log.AppendLine("database opened");
     }
 
-    private async Task Drop()
+    private async Task CloseDatabase()
     {
-        _db.Dispose();
-        _db = null;
+        await _db.DisposeAsync();
+
+        _log.AppendLine("database closed (with checkpoint)");
     }
 
     private async Task InsertPerson()
@@ -48,5 +50,12 @@
         {
             _log.AppendLine($"  - {(person?.ToString() ?? "null")}");
         }
+    }
+
+    private async Task Checkpoint()
+    {
+        await _db.CheckpointAsync();
+
+        _log.AppendLine("checkpoint");
     }
 }

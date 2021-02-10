@@ -18,8 +18,8 @@ namespace LiteDB.Engine
     {
         private readonly MemoryCache _cache;
 
-        private Stream _stream;
-        private Collation _collation;
+        private readonly Stream _stream;
+        private readonly Collation _collation;
         private HeaderPage _header;
 
         private long _logStartPosition;
@@ -193,13 +193,11 @@ namespace LiteDB.Engine
 
             // get file length
             var endPosition = fullLogArea ? _stream.Length : _logEndPosition;
+            var position = _logStartPosition;
 
-            // set to first log page position
-            _stream.Position = _logStartPosition;
-
-            while (_stream.Position < endPosition)
+            while (position < endPosition)
             {
-                var position = _stream.Position;
+                _stream.Position = position;
 
                 await _stream.ReadAsync(buffer, 0, PAGE_SIZE);
 
@@ -207,6 +205,8 @@ namespace LiteDB.Engine
                 {
                     Position = position
                 };
+
+                position += PAGE_SIZE;
             }
         }
 
@@ -233,7 +233,7 @@ namespace LiteDB.Engine
         }
 
         /// <summary>
-        /// Write pages DIRECT in disk with NO queue. Used in CHECKPOINT only
+        /// Write pages direct in disk data area. Used in CHECKPOINT only
         /// </summary>
         public async Task WriteDataPages(IAsyncEnumerable<PageBuffer> pages)
         {

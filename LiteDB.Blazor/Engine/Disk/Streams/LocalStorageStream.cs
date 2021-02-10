@@ -16,7 +16,7 @@ namespace LiteDB.Engine
         private const int PAD_PAGE = 5;
         private const string LENGTH_KEY = "ldb_length";
 
-        private IJSRuntime _runtime;
+        private readonly IJSRuntime _runtime;
         private long _position = 0;
         private long _length = 0;
 
@@ -90,10 +90,21 @@ namespace LiteDB.Engine
 
         public override void SetLength(long value)
         {
+            var current = _length;
+
             _length = value;
 
             // run async
-            Task.Run(async () => await _runtime.InvokeAsync<object>("localStorage.setItem", LENGTH_KEY, _length));
+            Task.Run(async () =>
+            {
+                for (var i = value; i < current; i += PAGE_SIZE)
+                {
+                    await _runtime.InvokeAsync<object>("localStorage.removeItem", this.GetKey(i));
+                }
+
+                await _runtime.InvokeAsync<object>("localStorage.setItem", LENGTH_KEY, _length);
+
+            });
         }
 
         public override void Write(byte[] buffer, int offset, int count)

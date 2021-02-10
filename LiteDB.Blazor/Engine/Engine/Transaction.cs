@@ -98,6 +98,8 @@ namespace LiteDB.Engine
         /// </summary>
         internal async Task<TransactionService> GetTransaction()
         {
+            if (_disposed) throw LiteException.DatabaseClosed();
+
             if (_transaction == null)
             {
                 // lock transaction

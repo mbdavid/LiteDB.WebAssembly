@@ -277,7 +277,7 @@ namespace LiteDB.Engine
             ENSURE(_collectionPage == null, typeof(T) == typeof(CollectionPage), "if no collection page defined yet, must be first request");
             ENSURE(typeof(T) == typeof(CollectionPage), _collectionPage == null, "there is no new collection page if page already exists");
 
-            var pageID = 0u;
+            uint pageID;
             PageBuffer buffer;
 
             // there is need for _header.Savepoint() because changes here will incremental and will be persist later
