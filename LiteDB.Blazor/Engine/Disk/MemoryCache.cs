@@ -248,8 +248,6 @@ namespace LiteDB.Engine
         /// </summary>
         public void DiscardPage(PageBuffer page)
         {
-            ENSURE(page.IsWritable, "discarded page must be writable");
-
             // clear page controls
             page.IsWritable = false;
             page.Position = long.MaxValue;

@@ -13,14 +13,14 @@ namespace LiteDB.Engine
 {
     public class LocalStorageStream : Stream, IAsyncInitialize
     {
-        private const int PAD_PAGE = 5;
         private const string LENGTH_KEY = "ldb_length";
+        private const string PAGE_KEY = "ldb_page_{0:00000}";
 
         private readonly IJSRuntime _runtime;
         private long _position = 0;
         private long _length = 0;
 
-        private string GetKey(long? p = null) => "ldb_page_" + ((p ?? _position) / PAGE_SIZE).ToString().PadLeft(PAD_PAGE, '0');
+        private string GetKey(long? p = null) => string.Format(PAGE_KEY, (p ?? _position) / PAGE_SIZE);
 
         public LocalStorageStream(IJSRuntime runtime)
         {
@@ -59,7 +59,7 @@ namespace LiteDB.Engine
 
             if (content.ValueKind == JsonValueKind.Null)
             {
-                // clear buffer
+                // read empty (not created) page
                 for(var i = offset; i < offset + count; i++)
                 {
                     buffer[i] = 0;
@@ -103,7 +103,6 @@ namespace LiteDB.Engine
                 }
 
                 await _runtime.InvokeAsync<object>("localStorage.setItem", LENGTH_KEY, _length);
-
             });
         }
 

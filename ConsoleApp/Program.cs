@@ -38,6 +38,8 @@ namespace ConsoleApp
                 },
                 BsonAutoId.Int32);
 
+                await db.CheckpointAsync();
+
                 Console.WriteLine("Inserted: " + count);
             }
             
