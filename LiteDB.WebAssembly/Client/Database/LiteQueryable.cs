@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB
@@ -231,21 +233,21 @@ namespace LiteDB
         /// <summary>
         /// Execute query and returns resultset as generic BsonDataReader
         /// </summary>
-        public IBsonDataReader ExecuteReader()
+        public async Task<IBsonDataReader> ExecuteReaderAsync()
         {
             _query.ExplainPlan = false;
 
-            return _engine.Query(_collection, _query);
+            return await _engine.QueryAsync(_collection, _query);
         }
 
         /// <summary>
         /// Execute query and return resultset as IEnumerable of documents
         /// </summary>
-        public IEnumerable<BsonDocument> ToDocuments()
+        public async IAsyncEnumerable<BsonDocument> ToDocumentsAsync()
         {
-            using (var reader = this.ExecuteReader())
+            await using (var reader = await this.ExecuteReaderAsync())
             {
-                while (reader.Read())
+                while (await reader.ReadAsync())
                 {
                     yield return reader.Current as BsonDocument;
                 }
@@ -255,47 +257,48 @@ namespace LiteDB
         /// <summary>
         /// Execute query and return resultset as IEnumerable of T. If T is a ValueType or String, return values only (not documents)
         /// </summary>
-        public IEnumerable<T> ToEnumerable()
+        public async IAsyncEnumerable<T> ToAsyncEnumerable()
         {
             if (_isSimpleType)
             {
-                return this.ToDocuments()
-                    .Select(x => x[x.Keys.First()])
-                    .Select(x => (T)_mapper.Deserialize(typeof(T), x));
+                await foreach(var doc in this.ToDocumentsAsync())
+                {
+                    var key = doc.Keys.First();
+
+                    yield return (T)_mapper.Deserialize(typeof(T), key);
+                }
             }
             else
             {
-                return this.ToDocuments()
-                    .Select(x => (T)_mapper.Deserialize(typeof(T), x));
+                await foreach (var doc in this.ToDocumentsAsync())
+                {
+                    var key = doc.Keys.First();
+
+                    yield return (T)_mapper.Deserialize(typeof(T), doc);
+                }
             }
         }
 
         /// <summary>
         /// Execute query and return results as a List
         /// </summary>
-        public List<T> ToList()
-        {
-            return this.ToEnumerable().ToList();
-        }
+        public Task<List<T>> ToListAsync() => this.ToAsyncEnumerable().ToListAsync();
 
         /// <summary>
         /// Execute query and return results as an Array
         /// </summary>
-        public T[] ToArray()
-        {
-            return this.ToEnumerable().ToArray();
-        }
+        public Task<T[]> ToArrayAsync() => this.ToAsyncEnumerable().ToArrayAsync();
 
         /// <summary>
         /// Get execution plan over current query definition to see how engine will execute query
         /// </summary>
-        public BsonDocument GetPlan()
+        public async Task<BsonDocument> GetPlan()
         {
             _query.ExplainPlan = true;
 
-            var reader = _engine.Query(_collection, _query);
+            await using var reader = await _engine.QueryAsync(_collection, _query);
 
-            return reader.ToEnumerable().FirstOrDefault()?.AsDocument;
+            return reader.Current.AsDocument;
         }
 
         #endregion
@@ -305,113 +308,28 @@ namespace LiteDB
         /// <summary>
         /// Returns the only document of resultset, and throw an exception if there not exactly one document in the sequence
         /// </summary>
-        public T Single()
-        {
-            return this.ToEnumerable().Single();
-        }
+        public Task<T> SingleAsync() => this.ToAsyncEnumerable().SingleAsync();
 
         /// <summary>
         /// Returns the only document of resultset, or null if resultset are empty; this method throw an exception if there not exactly one document in the sequence
         /// </summary>
-        public T SingleOrDefault()
-        {
-            return this.ToEnumerable().SingleOrDefault();
-        }
+        public Task<T> SingleOrDefaultAsync() => this.ToAsyncEnumerable().SingleOrDefaultAsync();
 
         /// <summary>
         /// Returns first document of resultset
         /// </summary>
-        public T First()
-        {
-            return this.ToEnumerable().First();
-        }
+        public Task<T> FirstAsync() => this.ToAsyncEnumerable().FirstAsync();
 
         /// <summary>
         /// Returns first document of resultset or null if resultset are empty
         /// </summary>
-        public T FirstOrDefault()
-        {
-            return this.ToEnumerable().FirstOrDefault();
-        }
+        public Task<T> FirstOrDefaultAsync() => this.ToAsyncEnumerable().FirstOrDefaultAsync();
 
-        #endregion
+        public Task<int> CountAsync => this.ToAsyncEnumerable().CountAsync();
 
-        #region Execute Count
+        public Task<long> LongCountAsync => this.ToAsyncEnumerable().LongCountAsync();
 
-        /// <summary>
-        /// Execute Count methos in filter query
-        /// </summary>
-        public int Count()
-        {
-            var oldSelect = _query.Select;
-
-            try
-            {
-                this.Select($"{{ count: COUNT(*._id) }}");
-                var ret = this.ToDocuments().Single()["count"].AsInt32;
-
-                return ret;
-            }
-            finally
-            {
-                _query.Select = oldSelect;
-            }
-        }
-
-        /// <summary>
-        /// Execute Count methos in filter query
-        /// </summary>
-        public long LongCount()
-        {
-            var oldSelect = _query.Select;
-
-            try
-            {
-                this.Select($"{{ count: COUNT(*._id) }}");
-                var ret = this.ToDocuments().Single()["count"].AsInt64;
-
-                return ret;
-            }
-            finally
-            {
-                _query.Select = oldSelect;
-            }
-        }
-
-        /// <summary>
-        /// Returns true/false if query returns any result
-        /// </summary>
-        public bool Exists()
-        {
-            var oldSelect = _query.Select;
-
-            try
-            {
-                this.Select($"{{ exists: ANY(*._id) }}");
-                var ret = this.ToDocuments().Single()["exists"].AsBoolean;
-
-                return ret;
-            }
-            finally
-            {
-                _query.Select = oldSelect;
-            }
-        }
-
-        #endregion
-
-        #region Execute Into
-
-        public int Into(string newCollection, BsonAutoId autoId = BsonAutoId.ObjectId)
-        {
-            _query.Into = newCollection;
-            _query.IntoAutoId = autoId;
-
-            using (var reader = this.ExecuteReader())
-            {
-                return reader.Current.AsInt32;
-            }
-        }
+        public Task<bool> ExistsAsync => this.ToAsyncEnumerable().AnyAsync();
 
         #endregion
     }

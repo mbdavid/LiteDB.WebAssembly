@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Threading.Tasks;
 
 namespace LiteDB
 {
@@ -35,22 +36,22 @@ namespace LiteDB
         ILiteQueryableResult<T> Offset(int offset);
         ILiteQueryableResult<T> ForUpdate();
 
-        BsonDocument GetPlan();
-        IBsonDataReader ExecuteReader();
-        IEnumerable<BsonDocument> ToDocuments();
-        IEnumerable<T> ToEnumerable();
-        List<T> ToList();
-        T[] ToArray();
+        Task<BsonDocument> GetPlan();
+        Task<IBsonDataReader> ExecuteReaderAsync();
+        IAsyncEnumerable<BsonDocument> ToDocumentsAsync();
+        IAsyncEnumerable<T> ToAsyncEnumerable();
+        Task<List<T>> ToListAsync();
+        Task<T[]> ToArrayAsync();
 
         int Into(string newCollection, BsonAutoId autoId = BsonAutoId.ObjectId);
 
-        T First();
-        T FirstOrDefault();
-        T Single();
-        T SingleOrDefault();
+        Task<T> FirstAsync();
+        Task<T> FirstOrDefaultAsync();
+        Task<T> SingleAsync();
+        Task<T> SingleOrDefaultAsync();
 
-        int Count();
-        long LongCount();
-        bool Exists();
+        int CountAsync();
+        long LongCountAsync();
+        bool ExistsAsync();
     }
 }

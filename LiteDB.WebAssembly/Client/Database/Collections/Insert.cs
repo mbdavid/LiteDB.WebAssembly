@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB
@@ -10,14 +12,14 @@ namespace LiteDB
         /// <summary>
         /// Insert a new entity to this collection. Document Id must be a new value in collection - Returns document Id
         /// </summary>
-        public BsonValue Insert(T entity)
+        public async Task<BsonValue> InsertAsync(T entity)
         {
             if (entity == null) throw new ArgumentNullException(nameof(entity));
 
             var doc = _mapper.ToDocument(entity);
             var removed = this.RemoveDocId(doc);
 
-            _engine.Insert(_collection, new[] { doc }, _autoId);
+            await _engine.InsertAsync(_collection, new[] { doc }, _autoId);
 
             var id = doc["_id"];
 
@@ -33,7 +35,7 @@ namespace LiteDB
         /// <summary>
         /// Insert a new document to this collection using passed id value.
         /// </summary>
-        public void Insert(BsonValue id, T entity)
+        public Task InsertAsync(BsonValue id, T entity)
         {
             if (entity == null) throw new ArgumentNullException(nameof(entity));
             if (id == null || id.IsNull) throw new ArgumentNullException(nameof(id));
@@ -42,28 +44,17 @@ namespace LiteDB
 
             doc["_id"] = id;
 
-            _engine.Insert(_collection, new [] { doc }, _autoId);
+            return _engine.InsertAsync(_collection, new [] { doc }, _autoId);
         }
 
         /// <summary>
         /// Insert an array of new documents to this collection. Document Id must be a new value in collection. Can be set buffer size to commit at each N documents
         /// </summary>
-        public int Insert(IEnumerable<T> entities)
+        public Task<int> InsertAsync(IEnumerable<T> entities)
         {
             if (entities == null) throw new ArgumentNullException(nameof(entities));
 
-            return _engine.Insert(_collection, this.GetBsonDocs(entities), _autoId);
-        }
-
-        /// <summary>
-        /// Implements bulk insert documents in a collection. Usefull when need lots of documents.
-        /// </summary>
-        [Obsolete("Use normal Insert()")]
-        public int InsertBulk(IEnumerable<T> entities, int batchSize = 5000)
-        {
-            if (entities == null) throw new ArgumentNullException(nameof(entities));
-
-            return _engine.Insert(_collection, this.GetBsonDocs(entities), _autoId);
+            return _engine.InsertAsync(_collection, this.GetBsonDocs(entities), _autoId);
         }
 
         /// <summary>

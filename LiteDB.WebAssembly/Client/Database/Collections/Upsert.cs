@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB
@@ -10,27 +12,27 @@ namespace LiteDB
         /// <summary>
         /// Insert or Update a document in this collection.
         /// </summary>
-        public bool Upsert(T entity)
+        public async Task<bool> UpsertAsync(T entity)
         {
             if (entity == null) throw new ArgumentNullException(nameof(entity));
 
-            return this.Upsert(new T[] { entity }) == 1;
+            return (await this.UpsertAsync(new T[] { entity }) == 1);
         }
 
         /// <summary>
         /// Insert or Update all documents
         /// </summary>
-        public int Upsert(IEnumerable<T> entities)
+        public Task<int> UpsertAsync(IEnumerable<T> entities)
         {
             if (entities == null) throw new ArgumentNullException(nameof(entities));
 
-            return _engine.Upsert(_collection, this.GetBsonDocs(entities), _autoId);
+            return _engine.UpsertAsync(_collection, this.GetBsonDocs(entities), _autoId);
         }
 
         /// <summary>
         /// Insert or Update a document in this collection.
         /// </summary>
-        public bool Upsert(BsonValue id, T entity)
+        public async Task<bool> UpsertAsync(BsonValue id, T entity)
         {
             if (entity == null) throw new ArgumentNullException(nameof(entity));
             if (id == null || id.IsNull) throw new ArgumentNullException(nameof(id));
@@ -41,7 +43,7 @@ namespace LiteDB
             // set document _id using id parameter
             doc["_id"] = id;
 
-            return _engine.Upsert(_collection, new[] { doc }, _autoId) > 0;
+            return (await _engine.UpsertAsync(_collection, new[] { doc }, _autoId)) > 0;
         }
     }
 }

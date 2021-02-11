@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Linq.Expressions;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB
@@ -9,44 +11,44 @@ namespace LiteDB
         /// <summary>
         /// Delete a single document on collection based on _id index. Returns true if document was deleted
         /// </summary>
-        public bool Delete(BsonValue id)
+        public async Task<bool> DeleteAsync(BsonValue id)
         {
             if (id == null || id.IsNull) throw new ArgumentNullException(nameof(id));
 
-            return _engine.Delete(_collection, new [] { id }) == 1;
+            return (await _engine.DeleteAsync(_collection, new [] { id })) == 1;
         }
 
         /// <summary>
         /// Delete all documents inside collection. Returns how many documents was deleted. Run inside current transaction
         /// </summary>
-        public int DeleteAll()
+        public Task<int> DeleteAllAsync()
         {
-            return _engine.DeleteMany(_collection, null);
+            return _engine.DeleteManyAsync(_collection, null);
         }
 
         /// <summary>
         /// Delete all documents based on predicate expression. Returns how many documents was deleted
         /// </summary>
-        public int DeleteMany(BsonExpression predicate)
+        public Task<int> DeleteManyAsync(BsonExpression predicate)
         {
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
 
-            return _engine.DeleteMany(_collection, predicate);
+            return _engine.DeleteManyAsync(_collection, predicate);
         }
 
         /// <summary>
         /// Delete all documents based on predicate expression. Returns how many documents was deleted
         /// </summary>
-        public int DeleteMany(string predicate, BsonDocument parameters) => this.DeleteMany(BsonExpression.Create(predicate, parameters));
+        public Task<int> DeleteManyAsync(string predicate, BsonDocument parameters) => this.DeleteManyAsync(BsonExpression.Create(predicate, parameters));
 
         /// <summary>
         /// Delete all documents based on predicate expression. Returns how many documents was deleted
         /// </summary>
-        public int DeleteMany(string predicate, params BsonValue[] args) => this.DeleteMany(BsonExpression.Create(predicate, args));
+        public Task<int> DeleteManyAsync(string predicate, params BsonValue[] args) => this.DeleteManyAsync(BsonExpression.Create(predicate, args));
 
         /// <summary>
         /// Delete all documents based on predicate expression. Returns how many documents was deleted
         /// </summary>
-        public int DeleteMany(Expression<Func<T, bool>> predicate) => this.DeleteMany(_mapper.GetExpression(predicate));
+        public Task<int> DeleteManyAsync(Expression<Func<T, bool>> predicate) => this.DeleteManyAsync(_mapper.GetExpression(predicate));
     }
 }

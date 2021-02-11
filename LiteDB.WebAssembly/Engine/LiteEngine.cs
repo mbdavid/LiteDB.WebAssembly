@@ -112,11 +112,11 @@ namespace LiteDB.Engine
         /// <summary>
         /// Run checkpoint command to copy log file into data file
         /// </summary>
-        public async Task<int> CheckpointAsync()
+        public Task<int> CheckpointAsync()
         {
             if (_disposed == true) throw LiteException.DatabaseClosed();
 
-            return await _walIndex.Checkpoint();
+            return _walIndex.Checkpoint();
         }
 
         /// <summary>

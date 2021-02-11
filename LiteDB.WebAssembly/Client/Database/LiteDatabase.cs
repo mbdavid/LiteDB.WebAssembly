@@ -4,6 +4,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+
 using LiteDB.Engine;
 using static LiteDB.Constants;
 
@@ -18,7 +20,6 @@ namespace LiteDB
 
         private readonly ILiteEngine _engine;
         private readonly BsonMapper _mapper;
-        private readonly bool _disposeOnClose;
 
         /// <summary>
         /// Get current instance of BsonMapper used in this database instance (can be BsonMapper.Global)
@@ -30,57 +31,12 @@ namespace LiteDB
         #region Ctor
 
         /// <summary>
-        /// Starts LiteDB database using a connection string for file system database
+        /// Create new instance of LiteDatabase using an external Stream source as database file
         /// </summary>
-        public LiteDatabase(string connectionString, BsonMapper mapper = null)
-            : this(new ConnectionString(connectionString), mapper)
+        public LiteDatabase(Stream stream, Collation collation = null, BsonMapper mapper = null)
         {
-        }
-
-        /// <summary>
-        /// Starts LiteDB database using a connection string for file system database
-        /// </summary>
-        public LiteDatabase(ConnectionString connectionString, BsonMapper mapper = null)
-        {
-            if (connectionString == null) throw new ArgumentNullException(nameof(connectionString));
-
-            if (connectionString.Upgrade == true)
-            {
-                // try upgrade if need
-                LiteEngine.Upgrade(connectionString.Filename, connectionString.Password, connectionString.Collation);
-            }
-
-            _engine = connectionString.CreateEngine();
+            _engine = new LiteEngine(stream, collation);
             _mapper = mapper ?? BsonMapper.Global;
-            _disposeOnClose = true;
-        }
-
-        /// <summary>
-        /// Starts LiteDB database using a generic Stream implementation (mostly MemoryStream).
-        /// </summary>
-        /// <param name="stream">DataStream reference </param>
-        /// <param name="mapper">BsonMapper mapper reference</param>
-        /// <param name="logStream">LogStream reference </param>
-        public LiteDatabase(Stream stream, BsonMapper mapper = null, Stream logStream = null)
-        {
-            var settings = new EngineSettings
-            {
-                DataStream = stream ?? throw new ArgumentNullException(nameof(stream)),
-            };
-
-            _engine = new LiteEngine(settings);
-            _mapper = mapper ?? BsonMapper.Global;
-            _disposeOnClose = true;
-        }
-
-        /// <summary>
-        /// Start LiteDB database using a pre-exiting engine. When LiteDatabase instance dispose engine instance will be disposed too
-        /// </summary>
-        public LiteDatabase(ILiteEngine engine, BsonMapper mapper = null, bool disposeOnClose = true)
-        {
-            _engine = engine ?? throw new ArgumentNullException(nameof(engine));
-            _mapper = mapper ?? BsonMapper.Global;
-            _disposeOnClose = disposeOnClose;
         }
 
         #endregion
@@ -133,39 +89,17 @@ namespace LiteDB
         /// Initialize a new transaction. Transaction are created "per-thread". There is only one single transaction per thread.
         /// Return true if transaction was created or false if current thread already in a transaction.
         /// </summary>
-        public bool BeginTrans() => _engine.BeginTrans();
+        public Task<bool> BeginTransAsync() => _engine.BeginTransAsync();
 
         /// <summary>
         /// Commit current transaction
         /// </summary>
-        public bool Commit() => _engine.Commit();
+        public Task<bool> CommitAsync() => _engine.CommitAsync();
 
         /// <summary>
         /// Rollback current transaction
         /// </summary>
-        public bool Rollback() => _engine.Rollback();
-
-        #endregion
-
-        #region FileStorage
-
-        private ILiteStorage<string> _fs = null;
-
-        /// <summary>
-        /// Returns a special collection for storage files/stream inside datafile. Use _files and _chunks collection names. FileId is implemented as string. Use "GetStorage" for custom options
-        /// </summary>
-        public ILiteStorage<string> FileStorage
-        {
-            get { return _fs ?? (_fs = this.GetStorage<string>()); }
-        }
-
-        /// <summary>
-        /// Get new instance of Storage using custom FileId type, custom "_files" collection name and custom "_chunks" collection. LiteDB support multiples file storages (using different files/chunks collection names)
-        /// </summary>
-        public ILiteStorage<TFileId> GetStorage<TFileId>(string filesCollection = "_files", string chunksCollection = "_chunks")
-        {
-            return new LiteStorage<TFileId>(this, filesCollection, chunksCollection);
-        }
+        public Task<bool> RollbackAsync() => _engine.RollbackAsync();
 
         #endregion
 
@@ -176,15 +110,16 @@ namespace LiteDB
         /// </summary>
         public IEnumerable<string> GetCollectionNames()
         {
-            // use $cols system collection with type = user only
-            var cols = this.GetCollection("$cols")
-                .Query()
-                .Where("type = 'user'")
-                .ToDocuments()
-                .Select(x => x["name"].AsString)
-                .ToArray();
+            throw new NotImplementedException();
+            //// use $cols system collection with type = user only
+            //var cols = this.GetCollection("$cols")
+            //    .Query()
+            //    .Where("type = 'user'")
+            //    .ToDocuments()
+            //    .Select(x => x["name"].AsString)
+            //    .ToArray();
 
-            return cols;
+            //return cols;
         }
 
         /// <summary>
@@ -200,22 +135,22 @@ namespace LiteDB
         /// <summary>
         /// Drop a collection and all data + indexes
         /// </summary>
-        public bool DropCollection(string name)
+        public async Task<bool> DropCollectionAsync(string name)
         {
             if (name.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(name));
 
-            return _engine.DropCollection(name);
+            return await _engine.DropCollectionAsync(name);
         }
 
         /// <summary>
         /// Rename a collection. Returns false if oldName does not exists or newName already exists
         /// </summary>
-        public bool RenameCollection(string oldName, string newName)
+        public async Task<bool> RenameCollectionAsync(string oldName, string newName)
         {
             if (oldName.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(oldName));
             if (newName.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(newName));
 
-            return _engine.RenameCollection(oldName, newName);
+            return await _engine.RenameCollectionAsync(oldName, newName);
         }
 
         #endregion
@@ -225,13 +160,13 @@ namespace LiteDB
         /// <summary>
         /// Execute SQL commands and return as data reader.
         /// </summary>
-        public IBsonDataReader Execute(TextReader commandReader, BsonDocument parameters = null)
+        public async Task<IBsonDataReader> ExecuteAsync(TextReader commandReader, BsonDocument parameters = null)
         {
             if (commandReader == null) throw new ArgumentNullException(nameof(commandReader));
 
             var tokenizer = new Tokenizer(commandReader);
             var sql = new SqlParser(_engine, tokenizer, parameters);
-            var reader = sql.Execute();
+            var reader = await sql.Execute();
 
             return reader;
         }
@@ -239,21 +174,20 @@ namespace LiteDB
         /// <summary>
         /// Execute SQL commands and return as data reader
         /// </summary>
-        public IBsonDataReader Execute(string command, BsonDocument parameters = null)
+        public Task<IBsonDataReader> ExecuteAsync(string command, BsonDocument parameters = null)
         {
             if (command == null) throw new ArgumentNullException(nameof(command));
 
             var tokenizer = new Tokenizer(command);
             var sql = new SqlParser(_engine, tokenizer, parameters);
-            var reader = sql.Execute();
 
-            return reader;
+            return sql.Execute();
         }
 
         /// <summary>
         /// Execute SQL commands and return as data reader
         /// </summary>
-        public IBsonDataReader Execute(string command, params BsonValue[] args)
+        public Task<IBsonDataReader> ExecuteAsync(string command, params BsonValue[] args)
         {
             var p = new BsonDocument();
             var index = 0;
@@ -264,28 +198,21 @@ namespace LiteDB
                 index++;
             }
 
-            return this.Execute(command, p);
+            return this.ExecuteAsync(command, p);
         }
 
         #endregion
 
-        #region Checkpoint/Rebuild
+        #region Checkpoint/Open
+
+        public Task OpenAsync() => _engine.OpenAsync();
+
+        public bool IsOpen => _engine.IsOpen;
 
         /// <summary>
         /// Do database checkpoint. Copy all commited transaction from log file into datafile.
         /// </summary>
-        public void Checkpoint()
-        {
-            _engine.Checkpoint();
-        }
-
-        /// <summary>
-        /// Rebuild all database to remove unused pages - reduce data file
-        /// </summary>
-        public long Rebuild(RebuildOptions options = null)
-        {
-            return _engine.Rebuild(options);
-        }
+        public Task CheckpointAsync() => _engine.CheckpointAsync();
 
         #endregion
 
@@ -302,84 +229,43 @@ namespace LiteDB
         /// <summary>
         /// Set new value to internal engine variables
         /// </summary>
-        public BsonValue Pragma(string name, BsonValue value)
+        public async Task<BsonValue> PragmaAsync(string name, BsonValue value)
         {
-            return _engine.Pragma(name, value);
+            return await _engine.PragmaAsync(name, value);
         }
 
         /// <summary>
-        /// Get/Set database user version - use this version number to control database change model
+        /// Get database user version - use this version number to control database change model
         /// </summary>
-        public int UserVersion
-        {
-            get => _engine.Pragma(Pragmas.USER_VERSION);
-            set => _engine.Pragma(Pragmas.USER_VERSION, value);
-        }
+        public int UserVersion => _engine.Pragma(Pragmas.USER_VERSION);
 
         /// <summary>
         /// Get/Set database timeout - this timeout is used to wait for unlock using transactions
         /// </summary>
-        public TimeSpan Timeout
-        {
-            get => TimeSpan.FromSeconds(_engine.Pragma(Pragmas.TIMEOUT).AsInt32);
-            set => _engine.Pragma(Pragmas.TIMEOUT, (int)value.TotalSeconds);
-        }
+        public TimeSpan Timeout => TimeSpan.FromSeconds(_engine.Pragma(Pragmas.TIMEOUT).AsInt32);
 
         /// <summary>
-        /// Get/Set if database will deserialize dates in UTC timezone or Local timezone (default: Local)
+        /// Get if database will deserialize dates in UTC timezone or Local timezone (default: Local)
         /// </summary>
-        public bool UtcDate
-        {
-            get => _engine.Pragma(Pragmas.UTC_DATE);
-            set => _engine.Pragma(Pragmas.UTC_DATE, value);
-        }
+        public bool UtcDate => _engine.Pragma(Pragmas.UTC_DATE);
 
         /// <summary>
-        /// Get/Set database limit size (in bytes). New value must be equals or larger than current database size
+        /// Get database limit size (in bytes). New value must be equals or larger than current database size
         /// </summary>
-        public long LimitSize
-        {
-            get => _engine.Pragma(Pragmas.LIMIT_SIZE);
-            set => _engine.Pragma(Pragmas.LIMIT_SIZE, value);
-        }
+        public long LimitSize => _engine.Pragma(Pragmas.LIMIT_SIZE);
 
         /// <summary>
-        /// Get/Set in how many pages (8 Kb each page) log file will auto checkpoint (copy from log file to data file). Use 0 to manual-only checkpoint (and no checkpoint on dispose)
-        /// Default: 1000 pages
+        /// Get in how many pages (8 Kb each page) log file will auto checkpoint (copy from log file to data file). Use 0 to manual-only checkpoint (and no checkpoint on dispose)
         /// </summary>
-        public int CheckpointSize
-        {
-            get => _engine.Pragma(Pragmas.CHECKPOINT);
-            set => _engine.Pragma(Pragmas.CHECKPOINT, value);
-        }
+        public int CheckpointSize => _engine.Pragma(Pragmas.CHECKPOINT);
 
         /// <summary>
         /// Get database collection (this options can be changed only in rebuild proces)
         /// </summary>
-        public Collation Collation
-        {
-            get => new Collation(_engine.Pragma(Pragmas.COLLATION).AsString);
-        }
+        public Collation Collation => new Collation(_engine.Pragma(Pragmas.COLLATION).AsString);
 
         #endregion
 
-        public void Dispose()
-        {
-            this.Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        ~LiteDatabase()
-        {
-            this.Dispose(false);
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing && _disposeOnClose)
-            {
-                _engine.Dispose();
-            }
-        }
+        public ValueTask DisposeAsync() => _engine.DisposeAsync();
     }
 }

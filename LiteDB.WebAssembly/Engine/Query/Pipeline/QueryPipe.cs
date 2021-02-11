@@ -51,10 +51,10 @@ namespace LiteDB.Engine
             else
             {
                 // pipe: apply offset (no orderby)
-                if (query.Offset > 0) source = source.Skip(query.Offset);
+                if (query.Offset > 0) source = source.SkipAsync(query.Offset);
 
                 // pipe: apply limit (no orderby)
-                if (query.Limit < int.MaxValue) source = source.Take(query.Limit);
+                if (query.Limit < int.MaxValue) source = source.TakeAsync(query.Limit);
             }
 
             // do includes in result after filter

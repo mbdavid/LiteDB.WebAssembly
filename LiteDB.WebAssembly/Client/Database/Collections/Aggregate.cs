@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Threading.Tasks;
+
 using static LiteDB.Constants;
 
 namespace LiteDB
@@ -12,10 +14,10 @@ namespace LiteDB
         /// <summary>
         /// Get document count in collection
         /// </summary>
-        public int Count()
+        public Task<int> CountAsync()
         {
             // do not use indexes - collections has DocumentCount property
-            return this.Query().Count();
+            return this.Query().CountAsync();
         }
 
         /// <summary>
@@ -25,7 +27,7 @@ namespace LiteDB
         {
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
 
-            return this.Query().Where(predicate).Count();
+            return this.Query().Where(predicate).CountAsync();
         }
 
         /// <summary>
@@ -46,7 +48,7 @@ namespace LiteDB
         /// <summary>
         /// Get document count in collection using predicate filter expression
         /// </summary>
-        public int Count(Query query) => new LiteQueryable<T>(_engine, _mapper, _collection, query).Count();
+        public int Count(Query query) => new LiteQueryable<T>(_engine, _mapper, _collection, query).CountAsync();
 
         #endregion
 
@@ -57,7 +59,7 @@ namespace LiteDB
         /// </summary>
         public long LongCount()
         {
-            return this.Query().LongCount();
+            return this.Query().LongCountAsync();
         }
 
         /// <summary>
@@ -67,7 +69,7 @@ namespace LiteDB
         {
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
 
-            return this.Query().Where(predicate).LongCount();
+            return this.Query().Where(predicate).LongCountAsync();
         }
 
         /// <summary>
@@ -88,7 +90,7 @@ namespace LiteDB
         /// <summary>
         /// Get document count in collection using predicate filter expression
         /// </summary>
-        public long LongCount(Query query) => new LiteQueryable<T>(_engine, _mapper, _collection, query).Count();
+        public long LongCount(Query query) => new LiteQueryable<T>(_engine, _mapper, _collection, query).CountAsync();
 
         #endregion
 
@@ -101,7 +103,7 @@ namespace LiteDB
         {
             if (predicate == null) throw new ArgumentNullException(nameof(predicate));
 
-            return this.Query().Where(predicate).Exists();
+            return this.Query().Where(predicate).ExistsAsync();
         }
 
         /// <summary>
@@ -122,7 +124,7 @@ namespace LiteDB
         /// <summary>
         /// Get true if collection contains at least 1 document that satisfies the predicate expression
         /// </summary>
-        public bool Exists(Query query) => new LiteQueryable<T>(_engine, _mapper, _collection, query).Exists();
+        public bool Exists(Query query) => new LiteQueryable<T>(_engine, _mapper, _collection, query).ExistsAsync();
 
         #endregion
 

@@ -35,18 +35,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Client\**" />
     <Compile Remove="Engine\Query\**" />
     <Compile Remove="Engine\SystemCollections\**" />
-    <EmbeddedResource Remove="Client\**" />
     <EmbeddedResource Remove="Engine\Query\**" />
     <EmbeddedResource Remove="Engine\SystemCollections\**" />
-    <None Remove="Client\**" />
     <None Remove="Engine\Query\**" />
     <None Remove="Engine\SystemCollections\**" />
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="Client\Database\ILiteRepository.cs" />
+    <Compile Remove="Client\Database\LiteRepository.cs" />
     <Compile Remove="Engine\Engine\SystemCollections.cs" />
   </ItemGroup>
 
