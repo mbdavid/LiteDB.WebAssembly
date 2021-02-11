@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\LiteDB.Blazor\LiteDB.Blazor.csproj" />
+    <ProjectReference Include="..\LiteDB.WebAssembly\LiteDB.WebAssembly.csproj" />
   </ItemGroup>
 
 </Project>

@@ -25,8 +25,8 @@ namespace LiteDB.Demo
             builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 
             //builder.Services.AddTransient<ILiteEngine>(sp => new LiteEngine(new LocalStorageStream(sp.GetService<IJSRuntime>())));
-            builder.Services.AddTransient<ILiteEngine>(sp => new LiteEngine(new LocalStorageStream2(sp.GetService<IJSRuntime>())));
-            //builder.Services.AddTransient<ILiteEngine>(sp => new LiteEngine(new MemoryStream()));
+            //builder.Services.AddTransient<ILiteEngine>(sp => new LiteEngine(new LocalStorageStream2(sp.GetService<IJSRuntime>())));
+            builder.Services.AddTransient<ILiteEngine>(sp => new LiteEngine(new MemoryStream()));
 
             await builder.Build().RunAsync();
         }

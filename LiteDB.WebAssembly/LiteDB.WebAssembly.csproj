@@ -2,29 +2,29 @@
 
   <PropertyGroup>
     <TargetFrameworks>net5.0</TargetFrameworks>
-    <AssemblyVersion>5.1.0</AssemblyVersion>
-    <FileVersion>5.1.0</FileVersion>
-    <VersionPrefix>5.1.0</VersionPrefix>
+    <AssemblyVersion>0.5.0</AssemblyVersion>
+    <FileVersion>0.5.0</FileVersion>
+    <VersionPrefix>0.5.0</VersionPrefix>
     <Authors>Maurício David</Authors>
-    <Product>LiteDB.Blazor</Product>
+    <Product>LiteDB.WebAssembly</Product>
     <Description>LiteDB for Blazor WebAssembly - A smaller and focused LiteDB for Blazor Wasm</Description>
     <Copyright>MIT</Copyright>
     <NeutralLanguage>en-US</NeutralLanguage>
-    <Title>LiteDB.Blazor</Title>
-    <PackageId>LiteDB.Blazor</PackageId>
+    <Title>LiteDB.WebAssembly</Title>
+    <PackageId>LiteDB.WebAssembly</PackageId>
     <PackageVersion>5.1.0</PackageVersion>
-    <PackageTags>database nosql embedded</PackageTags>
+    <PackageTags>blazor wasm webassemblly database nosql embedded</PackageTags>
     <PackageIcon>icon_64x64.png</PackageIcon>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageProjectUrl>https://www.litedb.org</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mbdavid/LiteDB.Blazor</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <RootNamespace>LiteDB</RootNamespace>
-    <AssemblyName>LiteDB.Blazor</AssemblyName>
+    <AssemblyName>LiteDB.WebAssembly</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NetStandardImplicitPackageVersion Condition=" '$(TargetFramework)' == 'netstandard1.3' ">1.6.1</NetStandardImplicitPackageVersion>
     <NoWarn>1701;1702;1705;1591;0618</NoWarn>
-    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\LiteDB.xml</DocumentationFile>
+    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\LiteDB.WebAssembly.xml</DocumentationFile>
     <SignAssembly Condition="'$(OS)'=='Windows_NT'">true</SignAssembly>
     <AssemblyOriginatorKeyFile Condition="'$(Configuration)' == 'Release'">LiteDB.snk</AssemblyOriginatorKeyFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -81,10 +81,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.JSInterop" Version="5.0.2" />
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Engine\Disk\Serializer\Sync\" />
-    <Folder Include="Blazor\" />
   </ItemGroup>
   <!-- End References -->
 

@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.29609.76
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LiteDB.Blazor", "LiteDB.Blazor\LiteDB.Blazor.csproj", "{C48593A1-5062-4F92-BD06-00760D894F44}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LiteDB.WebAssembly", "LiteDB.WebAssembly\LiteDB.WebAssembly.csproj", "{C48593A1-5062-4F92-BD06-00760D894F44}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LiteDB.Demo", "LiteDB.Demo\LiteDB.Demo.csproj", "{7430D5FB-9994-4502-8B78-484796DE2E24}"
 EndProject
