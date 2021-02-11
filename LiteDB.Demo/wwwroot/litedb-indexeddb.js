@@ -1,7 +1,6 @@
 ﻿(function () {
 
-    const PAGE_SIZE = 8192;
-    const PAGE_PAD = "000000";
+
 
     function getLength() {
         return localStorage.getItem("litedb_length") || 0;
@@ -28,6 +27,7 @@
             setLength(position + PAGE_SIZE);
         }
     }
+
 
     // export to window object
     window.localStorageDb = {

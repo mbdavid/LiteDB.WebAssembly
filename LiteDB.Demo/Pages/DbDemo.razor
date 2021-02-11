@@ -6,6 +6,7 @@
 <button class="btn btn-primary" hidden="@(_db.IsOpen)" @onclick="OpenDatabase">Open</button>
 <button class="btn btn-primary" hidden="@(!_db.IsOpen)" @onclick="CloseDatabase">Close</button>
 <button class="btn btn-primary" hidden="@(!_db.IsOpen)" @onclick="InsertPerson">Insert</button>
+<button class="btn btn-primary" hidden="@(!_db.IsOpen)" @onclick="() => BulkPerson(1000)">Bulk (1000)</button>
 <button class="btn btn-primary" hidden="@(!_db.IsOpen)" @onclick="QueryCollection">Query All</button>
 <button class="btn btn-primary" hidden="@(!_db.IsOpen)" @onclick="Checkpoint">Checkpoint</button>
 
@@ -39,17 +40,40 @@
         _log.AppendLine($"inserted new person: {person}");
     }
 
+    private async Task BulkPerson(int qt)
+    {
+        var docs = Enumerable.Range(1, qt).Select(i => new BsonDocument()
+        {
+            ["Name"] = "Bulk " + i,
+            ["Salary"] = _rnd.NextDouble() * 10000
+        });
+
+        var dt = Stopwatch.StartNew();
+
+        await _db.InsertAsync("col1", docs, BsonAutoId.Guid);
+
+        _log.AppendLine($"total inserted: {qt} in {dt.ElapsedMilliseconds}ms");
+    }
+
     private async Task QueryCollection()
     {
         var query = new Query(); // all
+        query.Limit = 10;
         var result = await _db.QueryAsync("col1", query);
 
-        _log.AppendLine("query results");
+        _log.AppendLine("query results (limit 10)");
 
         await foreach (var person in result.ToAsyncEnumerable())
         {
             _log.AppendLine($"  - {(person?.ToString() ?? "null")}");
         }
+    }
+
+    private async Task DeleteAll()
+    {
+        var count = await _db.DeleteManyAsync("col1", "1=1");
+
+        _log.AppendLine("deleted documents: " + count);
     }
 
     private async Task Checkpoint()
