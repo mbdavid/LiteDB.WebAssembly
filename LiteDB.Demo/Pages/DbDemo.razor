@@ -1,5 +1,5 @@
 ﻿@page "/db-demo"
-@inject ILiteEngine _db;
+@inject ILiteDatabase _db;
 
 <h1>LiteDB for Blazor WebAssembly</h1>
 
@@ -17,6 +17,13 @@
     private readonly StringBuilder _log = new StringBuilder();
     private readonly Random _rnd = new Random();
 
+    private ILiteCollection<Person> _personCollection;
+
+    protected override void OnInitialized()
+    {
+        _personCollection = _db.GetCollection<Person>();
+    }
+
     private async Task OpenDatabase()
     {
         await _db.OpenAsync();
@@ -33,47 +40,44 @@
 
     private async Task InsertPerson()
     {
-        var person = new BsonDocument { ["Name"] = "John Doe " + Guid.NewGuid(), ["Age"] = _rnd.Next(10, 90) };
+        var person = new Person
+        {
+            Name = "John Doe " + Guid.NewGuid(),
+            Age = _rnd.Next(10, 90)
+        };
 
-        await _db.InsertAsync("col1", new[] { person }, BsonAutoId.Guid);
+        await _personCollection.InsertAsync(person);
 
         _log.AppendLine($"inserted new person: {person}");
     }
 
     private async Task BulkPerson(int qt)
     {
-        var docs = Enumerable.Range(1, qt).Select(i => new BsonDocument()
+        var docs = Enumerable.Range(1, qt).Select(i => new Person
         {
-            ["Name"] = "Bulk " + i,
-            ["Salary"] = _rnd.NextDouble() * 10000
+            Name = "Bulk " + i,
+            Age = _rnd.Next(10, 90)
         });
 
         var dt = Stopwatch.StartNew();
 
-        await _db.InsertAsync("col1", docs, BsonAutoId.Guid);
+        await _personCollection.InsertAsync(docs);
 
         _log.AppendLine($"total inserted: {qt} in {dt.ElapsedMilliseconds}ms");
     }
 
     private async Task QueryCollection()
     {
-        var query = new Query(); // all
-        query.Limit = 10;
-        var result = await _db.QueryAsync("col1", query);
+        var results = _personCollection.Query()
+            .Limit(10)
+            .ToAsyncEnumerable();
 
         _log.AppendLine("query results (limit 10)");
 
-        await foreach (var person in result.ToAsyncEnumerable())
+        await foreach (var person in results)
         {
             _log.AppendLine($"  - {(person?.ToString() ?? "null")}");
         }
-    }
-
-    private async Task DeleteAll()
-    {
-        var count = await _db.DeleteManyAsync("col1", "1=1");
-
-        _log.AppendLine("deleted documents: " + count);
     }
 
     private async Task Checkpoint()
@@ -81,5 +85,14 @@
         await _db.CheckpointAsync();
 
         _log.AppendLine("checkpoint");
+    }
+
+    class Person
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public int Age { get; set; }
+
+        public override string ToString() => BsonMapper.Global.ToDocument(this).ToString();
     }
 }

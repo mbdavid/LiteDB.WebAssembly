@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 
 namespace ConsoleApp
 {
+    record Person(int Id, string Name, double Salary);
+
     class Program
     {
         private const string DATA_PATH = @"C:\Git\Data\_litedb-async.db";
@@ -24,23 +26,21 @@ namespace ConsoleApp
 
         static async Task MainAsync(string[] args)
         {
-            //File.Delete(DATA_PATH);
+            //File.Delete(DATA_PATH); //317
 
             //using (var stream = new FileStream(DATA_PATH, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite, 8192, FileOptions.Asynchronous))
             using (var stream = new MemoryStream())
-            await using (var db = new LiteEngine(stream))
+            await using (var db = new LiteDatabase(stream))
             {
                 await db.OpenAsync();
 
-                var docs = Enumerable.Range(1, 1000).Select(i => new BsonDocument()
-                {
-                    ["Name"] = "Bulk " + i,
-                    ["Salary"] = _rnd.NextDouble() * 10000
-                });
+                var personCollection = db.GetCollection<Person>();
+
+                var docs = Enumerable.Range(1, 1000).Select(i => new Person(i, "Bulk " + i, _rnd.NextDouble() * 10000));
 
                 var dt = Stopwatch.StartNew();
 
-                await db.InsertAsync("col1", docs, BsonAutoId.Guid);
+                await personCollection.InsertAsync(docs);
 
                 Console.WriteLine("Tempo: " + dt.ElapsedMilliseconds);
 

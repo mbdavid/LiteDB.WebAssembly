@@ -36,22 +36,20 @@ namespace LiteDB
         ILiteQueryableResult<T> Offset(int offset);
         ILiteQueryableResult<T> ForUpdate();
 
-        Task<BsonDocument> GetPlan();
+        Task<BsonDocument> GetPlanAsync();
         Task<IBsonDataReader> ExecuteReaderAsync();
         IAsyncEnumerable<BsonDocument> ToDocumentsAsync();
         IAsyncEnumerable<T> ToAsyncEnumerable();
         Task<List<T>> ToListAsync();
         Task<T[]> ToArrayAsync();
 
-        int Into(string newCollection, BsonAutoId autoId = BsonAutoId.ObjectId);
-
         Task<T> FirstAsync();
         Task<T> FirstOrDefaultAsync();
         Task<T> SingleAsync();
         Task<T> SingleOrDefaultAsync();
 
-        int CountAsync();
-        long LongCountAsync();
-        bool ExistsAsync();
+        Task<int> CountAsync();
+        Task<long> LongCountAsync();
+        Task<bool> ExistsAsync();
     }
 }

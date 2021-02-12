@@ -134,17 +134,17 @@ namespace LiteDB
         /// <summary>
         /// Find documents inside a collection using predicate expression.
         /// </summary>
-        Task<IAsyncEnumerable<T>> FindAsync(BsonExpression predicate, int skip = 0, int limit = int.MaxValue);
+        IAsyncEnumerable<T> FindAsync(BsonExpression predicate, int skip = 0, int limit = int.MaxValue);
 
         /// <summary>
         /// Find documents inside a collection using query definition.
         /// </summary>
-        Task<IAsyncEnumerable<T>> FindAsync(Query query, int skip = 0, int limit = int.MaxValue);
+        IAsyncEnumerable<T> FindAsync(Query query, int skip = 0, int limit = int.MaxValue);
 
         /// <summary>
         /// Find documents inside a collection using predicate expression.
         /// </summary>
-        Task<IAsyncEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate, int skip = 0, int limit = int.MaxValue);
+        IAsyncEnumerable<T> FindAsync(Expression<Func<T, bool>> predicate, int skip = 0, int limit = int.MaxValue);
 
         /// <summary>
         /// Find a document using Document Id. Returns null if not found.
@@ -179,7 +179,7 @@ namespace LiteDB
         /// <summary>
         /// Returns all documents inside collection order by _id index.
         /// </summary>
-        Task<IAsyncEnumerable<T>> FindAllAsync();
+        IAsyncEnumerable<T> FindAllAsync();
 
         /// <summary>
         /// Delete a single document on collection based on _id index. Returns true if document was deleted

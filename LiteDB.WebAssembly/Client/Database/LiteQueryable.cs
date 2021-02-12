@@ -292,7 +292,7 @@ namespace LiteDB
         /// <summary>
         /// Get execution plan over current query definition to see how engine will execute query
         /// </summary>
-        public async Task<BsonDocument> GetPlan()
+        public async Task<BsonDocument> GetPlanAsync()
         {
             _query.ExplainPlan = true;
 
@@ -325,11 +325,11 @@ namespace LiteDB
         /// </summary>
         public Task<T> FirstOrDefaultAsync() => this.ToAsyncEnumerable().FirstOrDefaultAsync();
 
-        public Task<int> CountAsync => this.ToAsyncEnumerable().CountAsync();
+        public Task<int> CountAsync() => this.ToAsyncEnumerable().CountAsync();
 
-        public Task<long> LongCountAsync => this.ToAsyncEnumerable().LongCountAsync();
+        public Task<long> LongCountAsync() => this.ToAsyncEnumerable().LongCountAsync();
 
-        public Task<bool> ExistsAsync => this.ToAsyncEnumerable().AnyAsync();
+        public Task<bool> ExistsAsync() => this.ToAsyncEnumerable().AnyAsync();
 
         #endregion
     }

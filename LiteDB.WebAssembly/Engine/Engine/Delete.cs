@@ -58,9 +58,6 @@ namespace LiteDB.Engine
         /// </summary>
         public async Task<int> DeleteManyAsync(string collection, BsonExpression predicate)
         {
-            throw new NotImplementedException();
-
-            /*
             if (collection.IsNullOrWhiteSpace()) throw new ArgumentNullException(nameof(collection));
 
             // do optimization for when using "_id = value" key
@@ -76,7 +73,7 @@ namespace LiteDB.Engine
             }
             else
             {
-                IEnumerable<BsonValue> getIds()
+                async IAsyncEnumerable<BsonValue> getIds()
                 {
                     // this is intresting: if _id returns an document (like in FileStorage) you can't run direct _id
                     // field because "reader.Current" will return _id document - but not - { _id: [document] }
@@ -88,9 +85,9 @@ namespace LiteDB.Engine
                         query.Where.Add(predicate);
                     }
 
-                    using (var reader = await this.QueryAsync(collection, query))
+                    await using (var reader = await this.QueryAsync(collection, query))
                     {
-                        while (reader.Read())
+                        while (await reader.ReadAsync())
                         {
                             var value = reader.Current["i"];
 
@@ -102,9 +99,9 @@ namespace LiteDB.Engine
                     }
                 }
 
-                return await this.DeleteAsync(collection, getIds());
+                // in next version fix this ToListAsync() to AsyncEnumerable
+                return await this.DeleteAsync(collection, await getIds().ToListAsync());
             }
-            */
         }
     }
 }
