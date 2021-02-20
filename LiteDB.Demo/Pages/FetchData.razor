@@ -1,16 +1,16 @@
 ﻿@page "/fetchdata"
-@inject HttpClient Http
+@inject ILiteDatabase _db
 
 <h1>Weather forecast</h1>
 
-<p>This component demonstrates fetching data from the server.</p>
+<p>This component demonstrates fetching data from the LiteDB.</p>
 
 @if (forecasts == null)
 {
-    <p><em>Loading...</em></p>
-}
+    <p><em>Loading...</em></p> }
 else
 {
+    <button class="btn btn-info" @onclick="async () => await CreateNewWeatherAsync()">New Weather</button>
     <table class="table">
         <thead>
             <tr>
@@ -18,38 +18,81 @@ else
                 <th>Temp. (C)</th>
                 <th>Temp. (F)</th>
                 <th>Summary</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>
             @foreach (var forecast in forecasts)
             {
-                <tr>
-                    <td>@forecast.Date.ToShortDateString()</td>
-                    <td>@forecast.TemperatureC</td>
-                    <td>@forecast.TemperatureF</td>
-                    <td>@forecast.Summary</td>
-                </tr>
+            <tr>
+                <td>@forecast.Date.ToShortDateString()</td>
+                <td>@forecast.TemperatureC</td>
+                <td>@forecast.TemperatureF</td>
+                <td>@forecast.Summary</td>
+                <td>
+                    <button class="btn btn-danger" @onclick="async () => await DeleteAsync(forecast.Id)">Delete</button>
+                </td>
+            </tr>
             }
         </tbody>
     </table>
 }
 
-@code {
-    private WeatherForecast[] forecasts;
+@code { 
+    private List<WeatherForecast> forecasts;
 
-    protected override async Task OnInitializedAsync()
-    {
-        forecasts = await Http.GetFromJsonAsync<WeatherForecast[]>("sample-data/weather.json");
-    }
+        private ILiteCollection<WeatherForecast> _weatherCollection;
+        private string[] cities = new[] { "Madrid", "Milan", "Rome", "Verona", "Barcelona", "Valencia", "Napoli" };
 
-    public class WeatherForecast
-    {
-        public DateTime Date { get; set; }
+        protected override async Task OnInitializedAsync()
+        {
+            _weatherCollection = _db.GetCollection<WeatherForecast>();
+            if (!_db.IsOpen)
+            {
+                await _db.OpenAsync();
+                forecasts = await _weatherCollection.Query().ToListAsync();
+            }
+        }
 
-        public int TemperatureC { get; set; }
+        private async Task CloseDatabase()
+        {
+            await _db.DisposeAsync();
+        }
 
-        public string Summary { get; set; }
+        public async Task CreateNewWeatherAsync()
+        {
+            var randNum = new Random().Next(-35, 35);
+            var randCity = new Random().Next(0, 6);
+            var newW = new WeatherForecast()
+            {
+                Date = DateTime.Now.AddDays(-new Random().Next(1, 50000)),
+                Summary = cities[randCity],
+                TemperatureC = randNum
+            };
 
-        public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-    }
+            await _weatherCollection.InsertAsync(newW);
+            forecasts = await _weatherCollection.Query().ToListAsync();
+            StateHasChanged();
+        }
+
+        public async Task DeleteAsync(Guid id)
+        {
+            await _weatherCollection.DeleteAsync(new BsonValue(id));
+            forecasts = await _weatherCollection.Query().ToListAsync();
+            StateHasChanged();
+        }
+
+        public class WeatherForecast
+        {
+            [BsonId(true)]
+            public Guid Id { get; set; } = Guid.NewGuid();
+
+            public DateTime Date { get; set; }
+
+            public int TemperatureC { get; set; }
+
+            public string Summary { get; set; }
+
+            public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+        } 
 }
